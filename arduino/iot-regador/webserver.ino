@@ -1,4 +1,3 @@
-const char WRONG_CLIMATE[] PROGMEM = "Erro desconhecido ao buscar temperatura e umidade";
 const char WRONG_AUTHORIZATION[] PROGMEM = "Authorization token errado";
 const char WRONG_STATUS[] PROGMEM = "Erro ao atualizar o status";
 
@@ -27,9 +26,9 @@ void startWebServer() {
    *  de firmware OTA 
    */
   // Rotas das imagens a serem usadas na página home e o Health (não estão com basic auth)
-  handle_MinionLogo();
-  handle_MinionList();
-  handle_MinionIco();
+  handle_WaterLogo();
+  handle_WaterList();
+  handle_WaterIco();
   handle_Style();
   handle_Health();
   handle_Metrics();  
@@ -41,11 +40,9 @@ void startWebServer() {
   handle_Ports();  
   handle_Sensors();
   handle_Lists();
-  handle_TemperatureAndHumidity();
   handle_UpdateSensors();
   handle_InsertItemList();
   handle_DeleteItemList();
-  handle_UploadStorage();
   // ------------------------------------ //
   // se não se enquadrar em nenhuma das rotas
   handle_OnError();
@@ -87,22 +84,22 @@ void handle_OnError(){
   });
 }
 
-void handle_MinionLogo(){
-  server.on("/minion-logo", HTTP_GET, [](AsyncWebServerRequest *request) {
-   request->send(LittleFS, "/minion-logo.png", getContentType("/minion-logo.png"));  
+void handle_WaterLogo(){
+  server.on("/water-logo", HTTP_GET, [](AsyncWebServerRequest *request) {
+   request->send(LittleFS, "/water-logo.png", getContentType("/water-logo.png"));  
   });
 }
 
-void handle_MinionList(){
-  server.on("/minion-list", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/minion-list.png", getContentType("/minion-list.png"));
+void handle_WaterList(){
+  server.on("/water-list", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/water-list.png", getContentType("/water-list.png"));
   });
 }
   
   
-void handle_MinionIco(){
-  server.on("/minion-ico", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/minion-ico.ico", getContentType("/minion-ico.ico"));   
+void handle_WaterIco(){
+  server.on("/water-ico", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/water-ico.ico", getContentType("/water-ico.ico"));   
   });
 }
 
@@ -254,23 +251,15 @@ void handle_Ports(){
 
 void handle_Sensors() {
   server.on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //"/sensors?type=eye"
-    //"/sensors?type=hat"
-    //"/sensors?type=blink"
-    //"/sensors?type=shake"
+    //"/sensors?type=water1"
+    //"/sensors?type=water2"
     if(check_authorization_header(request)) {
-      int relayPin = RelayEyes;
+      int relayPin = RelayWater1;
       int paramsNr = request->params();
       for(int i=0;i<paramsNr;i++){
         AsyncWebParameter* p = request->getParam(i);
-        if (strcmp("hat", p->value().c_str())==0){
-          relayPin = RelayHat;
-        }
-        else if (strcmp("blink", p->value().c_str())==0){
-          relayPin = RelayBlink;
-        }
-        else if (strcmp("shake", p->value().c_str())==0){
-          relayPin = RelayShake;
+        if (strcmp("water2", p->value().c_str())==0){
+          relayPin = RelayWater2;
         }        
       }
       request->send(HTTP_OK, getContentType(".json"), readSensor(relayPin));
@@ -297,59 +286,20 @@ void handle_Lists(){
   });
 }
 
-void handle_TemperatureAndHumidity(){
-  //http://minion.local/climate?type=celsius
-  server.on("/climate", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if(check_authorization_header(request)) {
-      int paramsNr = request->params();
-      for(int i=0;i<paramsNr;i++){
-        AsyncWebParameter* p = request->getParam(i);
-        if(strcmp("celsius", p->value().c_str())==0){
-          request->send(HTTP_OK, getContentType(".json"), treatTemperatureAndHumidity("celsius", String(iCelsius)));
-        } else if (strcmp("fahrenheit", p->value().c_str())==0){
-          request->send(HTTP_OK, getContentType(".json"), treatTemperatureAndHumidity("fahrenheit", String(iFahrenheit)));
-        }
-        else if (strcmp("humidity", p->value().c_str())==0){
-          request->send(HTTP_OK, getContentType(".json"), treatTemperatureAndHumidity("humidity", String(iHumidity)));
-        }
-      }
-      request->send(HTTP_BAD_REQUEST, getContentType(".txt"), WRONG_CLIMATE);
-    } else {
-      request->send(HTTP_UNAUTHORIZED, getContentType(".txt"), WRONG_AUTHORIZATION);
-    }
-  });
-}
-
-String treatTemperatureAndHumidity(String field, String value)
-{
-  String JSONmessage="{\""+field+"\": \""+value+"\"}";
-  #ifdef DEBUG
-    Serial.println(field+": "+JSONmessage);
-  #endif
-  return JSONmessage;
-}
-
 void handle_UpdateSensors(){
-  //"/sensor?type=eye"
-  //"/sensor?type=hat"
-  //"/sensor?type=blink"
-  //"/sensor?type=shake"
+  //"/sensor?type=water"
+  //"/sensor?type=water2"
   server.on("/sensor", HTTP_PUT, [](AsyncWebServerRequest * request){}, NULL,
     [](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     if(check_authorization_header(request)) {
-      int sensor = RelayEyes;
-      String feedName = "eye";
+      int sensor = RelayWater1;
+      String feedName = "water1";
       int paramsNr = request->params();
       for(int i=0;i<paramsNr;i++){
         AsyncWebParameter* p = request->getParam(i);
         feedName = p->value();
-        if(strcmp("hat", p->value().c_str())==0){
-          sensor = RelayHat;
-        } else if (strcmp("blink", p->value().c_str())==0){
-          sensor = RelayBlink;
-        }
-        else if (strcmp("shake", p->value().c_str())==0){
-          sensor = RelayShake;
+        if(strcmp("water2", p->value().c_str())==0){
+          sensor = RelayWater2;
         }
       }
       DynamicJsonDocument doc(MAX_STRING_LENGTH);
@@ -511,45 +461,13 @@ void handle_DeleteItemList(){
   });
 }
 
-void handle_UploadStorage() {
-  server.on("/storage", HTTP_GET, [](AsyncWebServerRequest * request) {
-    FSInfo64 fs_info;
-    String logmessage = "Client:" + request->client()->remoteIP().toString() + " " + request->url();
-    #ifdef DEBUG
-      Serial.println(logmessage);
-    #endif
-    char filename[] = "/uploadStorage.html";
-    String html = getContent(filename);
-    if(html.length() == 0) html=HTML_MISSING_DATA_UPLOAD;
-    else {
-      html.replace("FILELIST",listFiles(true));
-      if (!LittleFS.info64(fs_info)) {
-        #ifdef DEBUG
-          Serial.println("Erro ao listar storage do LittleFS");  
-        #endif
-      }
-      else {
-        html.replace("FREESTORAGE",humanReadableSize((fs_info.totalBytes - fs_info.usedBytes)));
-        html.replace("USEDSTORAGE",humanReadableSize(fs_info.usedBytes));
-        html.replace("TOTALSTORAGE",humanReadableSize(fs_info.totalBytes));
-      }
-    }
-    request->send(HTTP_OK, getContentType(filename), html);    
-  });
-  
-  // run handleUpload function when any file is uploaded
-  server.on("/uploadStorage", HTTP_POST, [](AsyncWebServerRequest *request) {
-        request->send(HTTP_OK);
-      }, handleUploadStorage);
-}
-
 bool check_authorization_header(AsyncWebServerRequest * request){
   int headers = request->headers();
   int i;
   for(i=0;i<headers;i++){
     AsyncWebHeader* h = request->getHeader(i);
     //Serial.printf("_HEADER[%s]: %s\n", h->name().c_str(), h->value().c_str());
-    if(h->name()=="Authorization" && h->value()=="Basic "+String(API_MINION_TOKEN)){
+    if(h->name()=="Authorization" && h->value()=="Basic "+String(API_WATER_TOKEN)){
       return true;
     }
   }

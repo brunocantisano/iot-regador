@@ -4,16 +4,16 @@
 // MQTT Broker
 /* Constantes - adafruit */
 #define MQTT_BROKER               "io.adafruit.com"
-#define MQTT_USERNAME             "<AIO_USERNAME>"
-#define MQTT_PASSWORD             "<AIO_KEY>"
+#define MQTT_USERNAME             "brunocantisano"
+#define MQTT_PASSWORD             "aio_tgiu16z1gKeHzNZEPKVEmJD4iMXi"
 #define MQTT_PORT                 1883
 
 /* chave para usar a API */
-#define API_MINION_TOKEN          "<API_MINION_TOKEN>"
+#define API_WATER_TOKEN           "YnJ1bm86cmVnYWRvcjEyMw=="
 
-#define USER_FIRMWARE             "<USER_FIRMWARE>"
-#define PASS_FIRMWARE             "<PASS_FIRMWARE>"
+#define USER_FIRMWARE             "admin"
+#define PASS_FIRMWARE             "admin"
 
-#define HOST                      "minion"
-#define API_VERSION               "<API_VERSION>"
+#define HOST                      "regador"
+#define API_VERSION               "1.2.3"
 #endif

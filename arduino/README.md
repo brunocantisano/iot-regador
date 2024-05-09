@@ -29,7 +29,6 @@ Adicionar no campo `URLs Adicionais para Gerenciadores de Placas` as linhas abai
 * Adafruit Unified Sensor
 * ArduinoJson
 * AsyncElegantOTA
-* DHT sensor library
 * NTPClient
 * PubSubClient
 * WiFi101

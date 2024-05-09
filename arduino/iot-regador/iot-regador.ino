@@ -8,7 +8,6 @@
 #include <WiFiClientSecure.h>
 #include <ESP8266mDNS.h>
 #include <ArduinoJson.h>
-#include <DHT.h>
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include <LittleFS.h>
@@ -33,11 +32,8 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 #define D8                         15
 #define D9                         16
 
-#define RelayEyes                  D0
-#define RelayHat                   D1
-#define RelayBlink                 D2
-#define RelayShake                 D3
-#define TemperatureHumidity        D4
+#define RelayWater1                D0
+#define RelayWater2                D1
 
 #define MAX_STRING_LENGTH          2000
 #define MAX_PATH                   256
@@ -57,11 +53,6 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 Preferences preferences;
 //---------------------------------//
 int timeSinceLastRead = 0;
-int iCelsius = 0;
-int iFahrenheit = 0;
-int iHumidity = 0;
-int iHeatIndexFahrenheit = 0;
-int iHeatIndexCelsius = 0;
 
 /* versão do firmware */
 const char version[] PROGMEM = API_VERSION;
@@ -72,15 +63,9 @@ ListaEncadeada<ArduinoSensorPort*> sensorListaEncadeada = ListaEncadeada<Arduino
 // Lista de aplicacoes do jenkins
 ListaEncadeada<Application*> applicationListaEncadeada = ListaEncadeada<Application*>();
 
-// Lista de media no sdcard
-ListaEncadeada<Media*> mediaListaEncadeada = ListaEncadeada<Media*>();
-
 // Create an ESP8266 WiFiClient class to connect to the MQTT server.
 WiFiClient espClient;
 PubSubClient mqttClient(espClient);
-
-// Inicia sensor DHT
-DHT dht(TemperatureHumidity, DHT11);
 
 AsyncWebServer server(HTTP_REST_PORT);               // initialise webserver
 
@@ -258,16 +243,6 @@ void addApplication(String name, String language, String description) {
 
   // Adiciona a aplicação na lista
   applicationListaEncadeada.add(app);
-}
-
-void addMedia(String name, int size, String lastModified) {
-  Media *media = new Media();
-  media->name = name;
-  media->size = size;
-  media->lastModified=lastModified;
-
-  // Adiciona a aplicação na lista
-  mediaListaEncadeada.add(media);
 }
 
 void saveApplicationList() {

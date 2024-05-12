@@ -8,10 +8,10 @@ const char NOT_FOUND_ROUTE[] PROGMEM = "Rota nao encontrada";
 const char PARSER_ERROR[] PROGMEM = "{\"message\": \"Erro ao fazer parser do json\"}";
 const char WEB_SERVER_CONFIG[] PROGMEM = "\nConfiguring Webserver ...";
 const char WEB_SERVER_STARTED[] PROGMEM = "Webserver started";
-const char HTML_MISSING_DATA_UPLOAD[] PROGMEM = "<!DOCTYPE html><html lang=\"en\"><head><title>Minion ESP8266-Garagem Digital</title>" 
+const char HTML_MISSING_DATA_UPLOAD[] PROGMEM = "<!DOCTYPE html><html lang=\"en\"><head><title>Regador ESP8266</title>" 
                 "<meta charset=\"utf-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">" 
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"></head>"
-                "<body><center><img src=\"http://www.imagenspng.com.br/wp-content/uploads/2015/07/minions-52-roxo.png\" width=\"128\"/> </center>"
+                "<body><center><img src=\"https://images.tcdn.com.br/img/img_prod/765836/regador_foz_2_litros_vasart_7409_2_b5cf997e67f703c9cd00a0c77dcce8f9.jpg\" width=\"128\"/> </center>"
                 "<div class=\"container\">Lembre-se que para rodar a aplicação será necessário, previamente, instalar o plugin: "
                 "<b><a src=\"https://randomnerdtutorials.com/install-esp8266-filesystem-uploader-arduino-ide/\">Install ESP8266 Filesystem Uploader in Arduino IDE\"</a></b>"
                 " e utilizar o menu no Arduino IDE: <b>Ferramentas->ESP8266 Sketch Data Upload</b>"
@@ -30,10 +30,11 @@ void startWebServer() {
   handle_WaterList();
   handle_WaterIco();
   handle_Style();
+  handle_RegadorRobo();
   handle_Health();
   handle_Metrics();  
   handle_Home();
-  handle_CICD();
+  handle_Eventos();
   handle_Swagger();
   handle_SwaggerUI();
   // Rotas bloqueadas pelo token authorization
@@ -95,8 +96,7 @@ void handle_WaterList(){
     request->send(LittleFS, "/water-list.png", getContentType("/water-list.png"));
   });
 }
-  
-  
+ 
 void handle_WaterIco(){
   server.on("/water-ico", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(LittleFS, "/water-ico.ico", getContentType("/water-ico.ico"));   
@@ -106,6 +106,13 @@ void handle_WaterIco(){
 void handle_Style(){
   server.on("/style", HTTP_GET, [](AsyncWebServerRequest *request) {
     request->send(LittleFS, "/style.css", getContentType("/style.css"));
+  });
+}
+
+
+void handle_RegadorRobo(){
+  server.on("/regador-robo", HTTP_GET, [](AsyncWebServerRequest *request) {
+   request->send(LittleFS, "/regador-robo.jpg", getContentType("/regador-robo.jpg"));  
   });
 }
 
@@ -166,7 +173,7 @@ void handle_Home(){
       // versao do firmware: https://semver.org/
       html.replace("0.0.0",String(version));
       html.replace("AIO_USERNAME",String(MQTT_USERNAME));
-      html.replace("HOST_MINION",String(HOST));
+      html.replace("HOST_WATER",String(HOST)+".local");
     } else {
       html = HTML_MISSING_DATA_UPLOAD;  
     }
@@ -174,9 +181,9 @@ void handle_Home(){
   });
 }
 
-void handle_CICD(){
+void handle_Eventos(){
   server.on("/cicd", HTTP_GET, [](AsyncWebServerRequest *request) {
-    char filename[] = "/cicd.html";    
+    char filename[] = "/eventos.html";    
     String html = getContent(filename);
     if(html.length() > 0) {
       html.replace("AIO_SERVER",String(MQTT_BROKER));
@@ -195,7 +202,7 @@ void handle_Swagger(){
     String json = getContent(filename);
     if(json.length() > 0) {
       json.replace("0.0.0",version);
-      json.replace("HOST_MINION",String(HOST)+".local");
+      json.replace("HOST_WATER",String(HOST)+".local");
     } else {
       json = HTML_MISSING_DATA_UPLOAD;  
     }
@@ -208,7 +215,7 @@ void handle_SwaggerUI(){
     char filename[] = "/swaggerUI.html";
     String html = getContent(filename);    
     if(html.length() > 0) {
-      html.replace("HOST_MINION",String(HOST)+".local");
+      html.replace("HOST_WATER",String(HOST)+".local");
     } else {
       html = HTML_MISSING_DATA_UPLOAD;
     }
@@ -219,8 +226,8 @@ void handle_SwaggerUI(){
 void handle_Health(){
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *request) {
     //String mqttConnected = mqttClient.connected()?"true":"false";
-    //String JSONmessage = "{\"greeting\": \"Bem vindo ao Minion ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
-    String JSONmessage = "{\"greeting\": \"Bem vindo ao Minion ESP8266 REST Web Server\"}";
+    //String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
+    String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\"}";
     request->send(HTTP_OK, getContentType(".json"), JSONmessage);
   });
 }

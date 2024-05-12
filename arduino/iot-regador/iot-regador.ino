@@ -32,8 +32,8 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 #define D8                         15
 #define D9                         16
 
-#define RelayWater1                D0
-#define RelayWater2                D1
+#define RelayWater1                D8
+#define RelayWater2                D7
 
 #define MAX_STRING_LENGTH          2000
 #define MAX_PATH                   256
@@ -333,99 +333,87 @@ void setup() {
 
   pinMode(D1,OUTPUT);
 
-  // // métricas para prometheus
-  // setupStorage();
-  // incrementBootCounter();
-  // //
+  // métricas para prometheus
+  setupStorage();
+  incrementBootCounter();
+  //
   
-  // #ifdef DEBUG
-  //   Serial.println(F("modo debug"));
-  // #else
-  //   Serial.println(F("modo produção"));
-  // #endif
+  #ifdef DEBUG
+    Serial.println(F("modo debug"));
+  #else
+    Serial.println(F("modo produção"));
+  #endif
   
-  // // DH11 inicia temperatura
-  // dht.begin();
+  if(!LittleFS.begin()){
+    #ifdef DEBUG
+      Serial.println(LITTLEFS_ERROR);
+    #endif      
+  }
 
-  // if(!LittleFS.begin()){
-  //   #ifdef DEBUG
-  //     Serial.println(LITTLEFS_ERROR);
-  //   #endif      
-  // }
-
-  // ssid = preferences.getString(PARAM_INPUT_1);
-  // pass = preferences.getString(PARAM_INPUT_2);
-  // ip = preferences.getString(PARAM_INPUT_3);
-  // gateway = preferences.getString(PARAM_INPUT_4);
+  ssid = preferences.getString(PARAM_INPUT_1);
+  pass = preferences.getString(PARAM_INPUT_2);
+  ip = preferences.getString(PARAM_INPUT_3);
+  gateway = preferences.getString(PARAM_INPUT_4);
   
-  // Serial.println(ssid);
-  // Serial.println(pass);
-  // Serial.println(ip);
-  // Serial.println(gateway);
+  Serial.println(ssid);
+  Serial.println(pass);
+  Serial.println(ip);
+  Serial.println(gateway);
 
-  // if(initWiFi()) {    
-  //   #ifdef DEBUG
-  //     Serial.println("\n\nNetwork Configuration:");
-  //     Serial.println("----------------------");
-  //     Serial.print("         SSID: "); Serial.println(WiFi.SSID());
-  //     Serial.print("  Wifi Status: "); Serial.println(WiFi.status());
-  //     Serial.print("Wifi Strength: "); Serial.print(WiFi.RSSI()); Serial.println(" dBm");
-  //     Serial.print("          MAC: "); Serial.println(WiFi.macAddress());
-  //     Serial.print("           IP: "); Serial.println(WiFi.localIP());
-  //     Serial.print("       Subnet: "); Serial.println(WiFi.subnetMask());
-  //     Serial.print("      Gateway: "); Serial.println(WiFi.gatewayIP());
-  //     Serial.print("        DNS 1: "); Serial.println(WiFi.dnsIP(0));
-  //     Serial.print("        DNS 2: "); Serial.println(WiFi.dnsIP(1));
-  //     Serial.print("        DNS 3: "); Serial.println(WiFi.dnsIP(2));   
-  //   #endif
-  //   startWebServer();
-  //   // exibindo rota /update para atualização de firmware e filesystem
-  //   AsyncElegantOTA.begin(&server, USER_FIRMWARE, PASS_FIRMWARE);
-  //   //setClock();
-  //   /* Usa MDNS para resolver o DNS */
-  //   Serial.println("mDNS configurado e inicializado;");    
-  //   if (!MDNS.begin(HOST)) 
-  //   { 
-  //       //http://minion.local (linux) e http://minion (windows)
-  //       #ifdef DEBUG
-  //         Serial.println("Erro ao configurar mDNS. O ESP32 vai reiniciar em 1s...");
-  //       #endif
-  //       delay(1000);
-  //       ESP.restart();        
-  //   }
-  //   // carrega dados
-  //   loadApplicationList();
-  //   Serial.println("Minion esta funcionando!");
-  //   WIFI_CONFIG = true;      
-  // }
-  // else {
-  //   // Conecta a rede Wi-Fi com SSID e senha
-  //   Serial.println("Atribuindo Ponto de Acesso");
-  //   // NULL sets an open Access Point
-  //   WiFi.softAP("ESP-WIFI-MANAGER", NULL);
-  //   IPAddress IP = WiFi.softAPIP();
-  //   Serial.print("Endereço IP do ponto de acesso: ");
-  //   Serial.println(IP);
-  //   startWifiManagerServer();    
-  // }
+  if(initWiFi()) {    
+    #ifdef DEBUG
+      Serial.println("\n\nNetwork Configuration:");
+      Serial.println("----------------------");
+      Serial.print("         SSID: "); Serial.println(WiFi.SSID());
+      Serial.print("  Wifi Status: "); Serial.println(WiFi.status());
+      Serial.print("Wifi Strength: "); Serial.print(WiFi.RSSI()); Serial.println(" dBm");
+      Serial.print("          MAC: "); Serial.println(WiFi.macAddress());
+      Serial.print("           IP: "); Serial.println(WiFi.localIP());
+      Serial.print("       Subnet: "); Serial.println(WiFi.subnetMask());
+      Serial.print("      Gateway: "); Serial.println(WiFi.gatewayIP());
+      Serial.print("        DNS 1: "); Serial.println(WiFi.dnsIP(0));
+      Serial.print("        DNS 2: "); Serial.println(WiFi.dnsIP(1));
+      Serial.print("        DNS 3: "); Serial.println(WiFi.dnsIP(2));   
+    #endif
+    startWebServer();
+    // exibindo rota /update para atualização de firmware e filesystem
+    AsyncElegantOTA.begin(&server, USER_FIRMWARE, PASS_FIRMWARE);
+    /* Usa MDNS para resolver o DNS */
+    Serial.println("mDNS configurado e inicializado;");    
+    if (!MDNS.begin(HOST)) 
+    { 
+        //http://regador.local (linux) e http://regador (windows)
+        #ifdef DEBUG
+          Serial.println("Erro ao configurar mDNS. O ESP32 vai reiniciar em 1s...");
+        #endif
+        delay(1000);
+        ESP.restart();        
+    }
+    // carrega dados
+    loadApplicationList();
+    Serial.println("Regador esta funcionando!");
+    WIFI_CONFIG = true;      
+  }
+  else {
+    // Conecta a rede Wi-Fi com SSID e senha
+    Serial.println("Atribuindo Ponto de Acesso");
+    // NULL sets an open Access Point
+    WiFi.softAP("ESP-WIFI-MANAGER", NULL);
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("Endereço IP do ponto de acesso: ");
+    Serial.println(IP);
+    startWifiManagerServer();    
+  }
 }
 
 void loop(void) {
-  // if(WIFI_CONFIG){
-  //   MDNS.update();
-  // }
-  // // Report every 1 minute.
-  // if(timeSinceLastRead > 60000) {
-  //   // Reading temperature or humidity takes about 250 milliseconds!
-  //   // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  //   getTemperatureHumidity();
-  //   timeSinceLastRead = 0;
-  // }
-  // delay(100);
-  // timeSinceLastRead += 100;
-
-  digitalWrite(D1,LOW);
-  delay(2000);
-  digitalWrite(D1,HIGH);
-  delay(2000);
+  if(WIFI_CONFIG){
+    MDNS.update();
+  }
+  // Report every 1 minute.
+  if(timeSinceLastRead > 60000) {
+    timeSinceLastRead = 0;
+  }
+  delay(100);
+  timeSinceLastRead += 100;
 }

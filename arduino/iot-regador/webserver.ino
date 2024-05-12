@@ -225,9 +225,9 @@ void handle_SwaggerUI(){
 
 void handle_Health(){
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //String mqttConnected = mqttClient.connected()?"true":"false";
-    //String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
-    String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\"}";
+    String mqttConnected = mqttClient.connected()?"true":"false";
+    String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
+    //String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\"}";
     request->send(HTTP_OK, getContentType(".json"), JSONmessage);
   });
 }
@@ -260,6 +260,7 @@ void handle_Sensors() {
   server.on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request) {
     //"/sensors?type=water1"
     //"/sensors?type=water2"
+    //"/sensors?type=level"
     if(check_authorization_header(request)) {
       int relayPin = RelayWater1;
       int paramsNr = request->params();
@@ -267,7 +268,9 @@ void handle_Sensors() {
         AsyncWebParameter* p = request->getParam(i);
         if (strcmp("water2", p->value().c_str())==0){
           relayPin = RelayWater2;
-        }        
+        } else if(strcmp("level", p->value().c_str())==0){
+          relayPin = RelayLevel;
+        }
       }
       request->send(HTTP_OK, getContentType(".json"), readSensor(relayPin));
     } else {
@@ -280,11 +283,11 @@ void handle_Lists(){
   server.on("/lists", HTTP_GET, [](AsyncWebServerRequest *request) {
     if(check_authorization_header(request)) {
       String JSONmessage;
-      Application *app;
-      for(int i = 0; i < applicationListaEncadeada.size(); i++){
+      Agenda *agd;
+      for(int i = 0; i < agendaListaEncadeada.size(); i++){
         // Obtem a aplicação da lista
-        app = applicationListaEncadeada.get(i);
-        JSONmessage += "{\"id\": "+String(i+1)+",\"name\": \""+app->name+"\",\"language\": \""+app->language+"\",\"description\": \""+app->description+"\"}"+',';
+        agd = agendaListaEncadeada.get(i);
+        JSONmessage += "{\"id\": "+String(i+1)+",\"name\": \""+agd->name+"\",\"hour\": \""+agd->hour+"\",\"description\": \""+agd->description+"\"}"+',';
       }
       request->send(HTTP_OK, getContentType(".json"), '['+JSONmessage.substring(0, JSONmessage.length()-1)+']');
     } else {
@@ -382,22 +385,22 @@ void handle_InsertItemList(){
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);
       } else {
         //busco para checar se aplicacao já existe
-        int index = searchList(doc["name"],doc["language"]);
+        int index = searchList(doc["name"],doc["hour"]);
         if(index == -1) {
           String JSONmessage;
           // não existe, então posso inserir
           // adiciona item na lista de aplicações jenkins 
-          addApplication(doc["name"], doc["language"], doc["description"]);  
+          addAgenda(doc["name"], doc["hour"], doc["description"]);  
 
           // Grava no Storage
-          saveApplicationList();
+          saveAgendaList();
         
-          Application *app;
-          for(int i = 0; i < applicationListaEncadeada.size(); i++){
+          Agenda *agd;
+          for(int i = 0; i < agendaListaEncadeada.size(); i++){
             // Obtem a aplicação da lista
-            app = applicationListaEncadeada.get(i);
-            JSONmessage="{\"name\": \""+String(app->name)+"\",\"language\": \""+String(app->language)+"\",\"description\": \""+String(app->description)+"\"}";
-            if((i < applicationListaEncadeada.size()) && (i < applicationListaEncadeada.size()-1)) {
+            agd = agendaListaEncadeada.get(i);
+            JSONmessage="{\"name\": \""+String(agd->name)+"\",\"hour\": \""+String(agd->hour)+"\",\"description\": \""+String(agd->description)+"\"}";
+            if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
               JSONmessage+=',';
             }
           }
@@ -431,21 +434,21 @@ void handle_DeleteItemList(){
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);
       } else {
       //busco pela aplicacao a ser removida
-      int index = searchList(doc["name"],doc["language"]);
+      int index = searchList(doc["name"],doc["hour"]);
       if(index != -1) {
         String JSONmessage;
         //removo
-        applicationListaEncadeada.remove(index);
+        agendaListaEncadeada.remove(index);
         
         // Grava no Storage
-        saveApplicationList();
+        saveAgendaList();
         
-        Application *app;
-        for(int i = 0; i < applicationListaEncadeada.size(); i++){
+        Agenda *agd;
+        for(int i = 0; i < agendaListaEncadeada.size(); i++){
           // Obtem a aplicação da lista
-          app = applicationListaEncadeada.get(i);
-          JSONmessage="{\"name\": \""+String(app->name)+"\",\"language\": \""+String(app->language)+"\",\"description\": \""+String(app->description)+"\"}";
-          if((i < applicationListaEncadeada.size()) && (i < applicationListaEncadeada.size()-1)) {
+          agd = agendaListaEncadeada.get(i);
+          JSONmessage="{\"name\": \""+String(agd->name)+"\",\"hour\": \""+String(agd->hour)+"\",\"description\": \""+String(agd->description)+"\"}";
+          if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
             JSONmessage+=',';
           }
         }

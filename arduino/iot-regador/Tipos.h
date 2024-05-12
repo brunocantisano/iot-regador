@@ -2,10 +2,10 @@
 #define Tipos_h
 
 /************* lista de aplicacoes jenkins *************/
-class Application {
+class Agenda {
   public:
     String name;
-    String language;
+    String hour;
     String description;    
 };
 /******************************************************/

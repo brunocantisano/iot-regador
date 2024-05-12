@@ -34,6 +34,7 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 
 #define RelayWater1                D8
 #define RelayWater2                D7
+#define RelayLevel                 D6
 
 #define MAX_STRING_LENGTH          2000
 #define MAX_PATH                   256
@@ -61,7 +62,7 @@ const char version[] PROGMEM = API_VERSION;
 ListaEncadeada<ArduinoSensorPort*> sensorListaEncadeada = ListaEncadeada<ArduinoSensorPort*>();
 
 // Lista de aplicacoes do jenkins
-ListaEncadeada<Application*> applicationListaEncadeada = ListaEncadeada<Application*>();
+ListaEncadeada<Agenda*> agendaListaEncadeada = ListaEncadeada<Agenda*>();
 
 // Create an ESP8266 WiFiClient class to connect to the MQTT server.
 WiFiClient espClient;
@@ -176,12 +177,12 @@ String getDataHora() {
     return String(buffer);
 }
 
-int searchList(String name, String language) {
-  Application *app;
-  for(int i = 0; i < applicationListaEncadeada.size(); i++){
+int searchList(String name, String hour) {
+  Agenda *agd;
+  for(int i = 0; i < agendaListaEncadeada.size(); i++){
     // Obtem a aplicação da lista
-    app = applicationListaEncadeada.get(i);
-    if (name == app->name && language==app->language) {
+    agd = agendaListaEncadeada.get(i);
+    if (name == agd->name && hour==agd->hour) {
       return i;
     }
   }
@@ -195,6 +196,39 @@ String getData(uint8_t *data, size_t len) {
     raw[i] = data[i];
   }
   return String(raw);
+}
+
+String IpAddress2String(const IPAddress& ipAddress)
+{
+    return (String(ipAddress[0]) + String(".") +
+           String(ipAddress[1]) + String(".") +
+           String(ipAddress[2]) + String(".") +
+           String(ipAddress[3]));
+}
+
+bool addSensor(byte id, byte gpio, byte status, char* name) {
+  ArduinoSensorPort *arduinoSensorPort = new ArduinoSensorPort(); 
+  arduinoSensorPort->id = id;
+  arduinoSensorPort->gpio = gpio;
+  arduinoSensorPort->status = status;
+  arduinoSensorPort->name = name;
+  pinMode(gpio, OUTPUT);
+
+  // Adiciona sensor na lista
+  sensorListaEncadeada.add(arduinoSensorPort);
+  return true;
+}
+
+bool loadSensorList()
+{
+  bool ret = false;
+  ret=addSensor(1, RelayWater1, LOW, "water1");
+  if(!ret) return false;
+  ret=addSensor(2, RelayWater2, LOW, "water2");
+  if(!ret) return false;
+  ret=addSensor(3, RelayLevel, LOW, "level");
+  if(!ret) return false;  
+  return true;
 }
 
 bool readBodySensorData(byte status, byte gpio) {
@@ -235,23 +269,23 @@ String readSensorStatus(byte gpio){
   return String(digitalRead(gpio));
 }
 
-void addApplication(String name, String language, String description) {
-  Application *app = new Application();
-  app->name = name;
-  app->language = language;
-  app->description = description;
+void addAgenda(String name, String hour, String description) {
+  Agenda *agd = new Agenda();
+  agd->name = name;
+  agd->hour = hour;
+  agd->description = description;
 
   // Adiciona a aplicação na lista
-  applicationListaEncadeada.add(app);
+  agendaListaEncadeada.add(agd);
 }
 
-void saveApplicationList() {
-  Application *app;
+void saveAgendaList() {
+  Agenda *agd;
   String JSONmessage;
-  for(int i = 0; i < applicationListaEncadeada.size(); i++){
+  for(int i = 0; i < agendaListaEncadeada.size(); i++){
     // Obtem a aplicação da lista
-    app = applicationListaEncadeada.get(i);
-    JSONmessage += "{\"name\": \""+String(app->name)+"\",\"language\": \""+String(app->language)+"\",\"description\": \""+String(app->description)+"\"}"+',';
+    agd = agendaListaEncadeada.get(i);
+    JSONmessage += "{\"name\": \""+String(agd->name)+"\",\"hour\": \""+String(agd->hour)+"\",\"description\": \""+String(agd->description)+"\"}"+',';
   }
   JSONmessage = '['+JSONmessage.substring(0, JSONmessage.length()-1)+']';
   // Grava no storage
@@ -260,7 +294,7 @@ void saveApplicationList() {
   mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
 }
 
-int loadApplicationList() {
+int loadAgendaList() {
   // Carrega do storage
   String JSONmessage = getContent("/lista.json");
   if(JSONmessage == "") {    
@@ -275,7 +309,7 @@ int loadApplicationList() {
       return 1;
     }
     for(int i = 0; i < doc.size(); i++){
-      addApplication(doc[i]["name"], doc[i]["language"], doc[i]["description"]);
+      addAgenda(doc[i]["name"], doc[i]["hour"], doc[i]["description"]);
     }    
   }
   return 0;
@@ -331,8 +365,6 @@ bool initWiFi() {
 void setup() {
   Serial.begin(SERIAL_PORT);
 
-  pinMode(D1,OUTPUT);
-
   // métricas para prometheus
   setupStorage();
   incrementBootCounter();
@@ -350,6 +382,14 @@ void setup() {
     #endif      
   }
 
+  // carrega sensores
+  bool load = loadSensorList();
+  if(!load) {
+    #ifdef DEBUG
+      Serial.println(F("Nao foi possivel carregar a lista de sensores!"));
+    #endif
+  }
+  
   ssid = preferences.getString(PARAM_INPUT_1);
   pass = preferences.getString(PARAM_INPUT_2);
   ip = preferences.getString(PARAM_INPUT_3);
@@ -390,7 +430,7 @@ void setup() {
         ESP.restart();        
     }
     // carrega dados
-    loadApplicationList();
+    loadAgendaList();
     Serial.println("Regador esta funcionando!");
     WIFI_CONFIG = true;      
   }

@@ -441,9 +441,9 @@
           "type": "string",
           "description": "nome da aplicação"
         },
-        "language": {
+        "hour": {
           "type": "string",
-          "description": "nome da linguagem de programação"
+          "description": "hora de programação para molhar as plantas"
         },
         "description": {
           "type": "string",

@@ -17,6 +17,7 @@ String getMetrics() {
   setMetric(&p, "esp8266_boot_counter", String(getBootCounter()));  
   setMetric(&p, "esp8266_water1", String(readSensorStatus(RelayWater1)));
   setMetric(&p, "esp8266_water2", String(readSensorStatus(RelayWater2)));
+  setMetric(&p, "esp8266_level", String(readSensorStatus(RelayLevel)));
 
   return p;
 }

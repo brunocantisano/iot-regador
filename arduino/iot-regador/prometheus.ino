@@ -15,8 +15,8 @@ String getMetrics() {
   setMetric(&p, "esp8266_heap_size", String(heap_size));
   setMetric(&p, "esp8266_free_heap", String(free_heap));
   setMetric(&p, "esp8266_boot_counter", String(getBootCounter()));  
-  setMetric(&p, "esp8266_water1", String(readSensorStatus(RelayWater1)));
-  setMetric(&p, "esp8266_water2", String(readSensorStatus(RelayWater2)));
+  setMetric(&p, "esp8266_water", String(readSensorStatus(RelayWater)));
+  setMetric(&p, "esp8266_light", String(readSensorStatus(RelayLight)));
   setMetric(&p, "esp8266_level", String(readSensorStatus(RelayLevel)));
 
   return p;

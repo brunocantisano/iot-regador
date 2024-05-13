@@ -32,8 +32,8 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 #define D8                         15
 #define D9                         16
 
-#define RelayWater1                D8
-#define RelayWater2                D7
+#define RelayWater                 D8
+#define RelayLight                 D7
 #define RelayLevel                 D6
 
 #define MAX_STRING_LENGTH          2000
@@ -222,9 +222,9 @@ bool addSensor(byte id, byte gpio, byte status, char* name) {
 bool loadSensorList()
 {
   bool ret = false;
-  ret=addSensor(1, RelayWater1, LOW, "water1");
+  ret=addSensor(1, RelayWater, LOW, "water");
   if(!ret) return false;
-  ret=addSensor(2, RelayWater2, LOW, "water2");
+  ret=addSensor(2, RelayLight, LOW, "light");
   if(!ret) return false;
   ret=addSensor(3, RelayLevel, LOW, "level");
   if(!ret) return false;  
@@ -453,6 +453,19 @@ void loop(void) {
   // Report every 1 minute.
   if(timeSinceLastRead > 60000) {
     timeSinceLastRead = 0;
+  }
+
+  // se nivel de agua baixou
+  int status = digitalRead(RelayLevel);
+  if(status == 1) {
+    // acendo a luz
+    digitalWrite(RelayLight, 1);
+
+    // desligar a bomba
+    digitalWrite(RelayWater, 0);
+  } else {
+    //apago a luz
+    digitalWrite(RelayLight, 0);
   }
   delay(100);
   timeSinceLastRead += 100;

@@ -112,7 +112,7 @@ void handle_Style(){
 
 void handle_RegadorRobo(){
   server.on("/regador-robo", HTTP_GET, [](AsyncWebServerRequest *request) {
-   request->send(LittleFS, "/regador-robo.jpg", getContentType("/regador-robo.jpg"));  
+   request->send(LittleFS, "/regador-robo.png", getContentType("/regador-robo.png"));
   });
 }
 
@@ -173,7 +173,7 @@ void handle_Home(){
       // versao do firmware: https://semver.org/
       html.replace("0.0.0",String(version));
       html.replace("AIO_USERNAME",String(MQTT_USERNAME));
-      html.replace("HOST_WATER",String(HOST)+".local");
+      html.replace("HOST_WATER",String(HOST));
     } else {
       html = HTML_MISSING_DATA_UPLOAD;  
     }
@@ -225,9 +225,9 @@ void handle_SwaggerUI(){
 
 void handle_Health(){
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *request) {
-    String mqttConnected = mqttClient.connected()?"true":"false";
-    String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
-    //String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\"}";
+    //String mqttConnected = mqttClient.connected()?"true":"false";
+    //String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
+    String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\"}";
     request->send(HTTP_OK, getContentType(".json"), JSONmessage);
   });
 }
@@ -258,16 +258,16 @@ void handle_Ports(){
 
 void handle_Sensors() {
   server.on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //"/sensors?type=water1"
-    //"/sensors?type=water2"
+    //"/sensors?type=water"
+    //"/sensors?type=light"
     //"/sensors?type=level"
     if(check_authorization_header(request)) {
-      int relayPin = RelayWater1;
+      int relayPin = RelayWater;
       int paramsNr = request->params();
       for(int i=0;i<paramsNr;i++){
         AsyncWebParameter* p = request->getParam(i);
-        if (strcmp("water2", p->value().c_str())==0){
-          relayPin = RelayWater2;
+        if (strcmp("light", p->value().c_str())==0){
+          relayPin = RelayLight;
         } else if(strcmp("level", p->value().c_str())==0){
           relayPin = RelayLevel;
         }
@@ -298,20 +298,21 @@ void handle_Lists(){
 
 void handle_UpdateSensors(){
   //"/sensor?type=water"
-  //"/sensor?type=water2"
   server.on("/sensor", HTTP_PUT, [](AsyncWebServerRequest * request){}, NULL,
     [](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
     if(check_authorization_header(request)) {
-      int sensor = RelayWater1;
-      String feedName = "water1";
+      int sensor = RelayWater;
+      String feedName = "water";
       int paramsNr = request->params();
+      /*
       for(int i=0;i<paramsNr;i++){
         AsyncWebParameter* p = request->getParam(i);
         feedName = p->value();
-        if(strcmp("water2", p->value().c_str())==0){
-          sensor = RelayWater2;
+        if(strcmp("light", p->value().c_str())==0){
+          sensor = RelayLight;
         }
       }
+      */
       DynamicJsonDocument doc(MAX_STRING_LENGTH);
       String JSONmessageBody = getData(data, len);
       DeserializationError error = deserializeJson(doc, JSONmessageBody);
@@ -380,6 +381,9 @@ void handle_InsertItemList(){
     if(check_authorization_header(request)) {
       DynamicJsonDocument doc(MAX_STRING_LENGTH);
       String JSONmessageBody = getData(data, len);
+      
+      Serial.println("opa: "+JSONmessageBody);
+      
       DeserializationError error = deserializeJson(doc, JSONmessageBody);
       if(error) {
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);

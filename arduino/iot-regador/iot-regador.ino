@@ -206,7 +206,7 @@ String IpAddress2String(const IPAddress& ipAddress)
            String(ipAddress[3]));
 }
 
-bool addSensor(byte id, byte gpio, byte status, char* name) {
+bool addSensor(byte id, byte gpio, byte status, const char* name) {
   ArduinoSensorPort *arduinoSensorPort = new ArduinoSensorPort(); 
   arduinoSensorPort->id = id;
   arduinoSensorPort->gpio = gpio;
@@ -432,7 +432,7 @@ void setup() {
     // carrega dados
     loadAgendaList();
     Serial.println("Regador esta funcionando!");
-    WIFI_CONFIG = true;      
+    WIFI_CONFIG = true;
   }
   else {
     // Conecta a rede Wi-Fi com SSID e senha
@@ -447,26 +447,34 @@ void setup() {
 }
 
 void loop(void) {
-  if(WIFI_CONFIG){
-    MDNS.update();
-  }
   // Report every 1 minute.
   if(timeSinceLastRead > 60000) {
     timeSinceLastRead = 0;
   }
-
-  // se nivel de agua baixou
-  int status = digitalRead(RelayLevel);
-  if(status == 1) {
-    // acendo a luz
-    digitalWrite(RelayLight, 1);
-
-    // desligar a bomba
-    digitalWrite(RelayWater, 0);
-  } else {
-    //apago a luz
-    digitalWrite(RelayLight, 0);
+  if(WIFI_CONFIG) {
+    MDNS.update();
+    // se nivel de agua baixou
+    int status = digitalRead(RelayLevel);
+    if(status == LOW) {      
+      // desligar a bomba
+      if(RelayWater == LOW){
+        // acendo a luz
+        Serial.println("Acendo a luz");
+        digitalWrite(RelayLight, LOW);
+        mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "ON");
+        Serial.println("Desligo a bomba");
+        digitalWrite(RelayWater, HIGH);
+        mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"water").c_str(), "OFF");        
+      }
+    } else {      
+      if(RelayLight == LOW){
+        //apago a luz
+        Serial.println("Apago a luz");
+        digitalWrite(RelayLight, HIGH);
+        mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "OFF");
+      }
+    }    
   }
-  delay(100);
-  timeSinceLastRead += 100;
+  delay(1000);
+  timeSinceLastRead += 1000;
 }

@@ -12,7 +12,7 @@ class Agenda {
 /******************* lista de sensores ****************/
 class ArduinoSensorPort {
   public:
-    char* name;
+    const char* name;
     byte id;
     byte gpio;
     byte status; // 1-TRUE / 0-FALSE

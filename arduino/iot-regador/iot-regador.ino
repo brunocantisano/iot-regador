@@ -174,16 +174,10 @@ String humanReadableSize(const size_t bytes) {
 }
 
 String getDataHora() {
-    // Busca tempo no NTP. Padrao de data: ISO-8601
-    time_t nowSecs = time(nullptr);
+    time_t horaAtual = getHoraAgora();
     struct tm timeinfo;
     char buffer[80];
-    while (nowSecs < 8 * 3600 * 2) {
-      delay(500);
-      nowSecs = time(nullptr);
-    }
-    gmtime_r(&nowSecs, &timeinfo);
-    // ISO 8601: 2021-10-04T14:12:26+00:00
+    gmtime_r(&horaAtual, &timeinfo);
     strftime (buffer,80,"%FT%T%z",&timeinfo);
     return String(buffer);
 }
@@ -542,11 +536,6 @@ void nivelAlto() {
   gmtime_r(&horaAtual, &timeinfo);
   //exemplo: 14:12
   strftime (buffer,80,"%H:%M",&timeinfo);
-  //strftime (buffer,80,"%FT%T%z",&timeinfo);
-  //Serial.println("opa: "+String(buffer));
-
-  // checo se existe essa hora em evento agendado
-  //horaAtual
   
   // ligo a bomba
   Serial.println("Ligo a bomba");

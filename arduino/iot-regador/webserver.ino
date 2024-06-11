@@ -225,7 +225,7 @@ void handle_SwaggerUI(){
 
 void handle_Health(){
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //String mqttConnected = mqttClient.connected()?"true":"false";
+    //String mqttConnected = mqttClient.connected()?"true":"false";    
     //String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
     String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\"}";
     request->send(HTTP_OK, getContentType(".json"), JSONmessage);

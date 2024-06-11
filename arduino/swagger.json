@@ -441,9 +441,9 @@
           "type": "string",
           "description": "nome da aplicação"
         },
-        "hour": {
+        "dataAgenda": {
           "type": "string",
-          "description": "hora de programação para molhar as plantas"
+          "description": "agenda de programação para molhar as plantas"
         },
         "description": {
           "type": "string",

@@ -182,7 +182,7 @@ void handle_Home(){
 }
 
 void handle_Eventos(){
-  server.on("/cicd", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/eventos", HTTP_GET, [](AsyncWebServerRequest *request) {
     char filename[] = "/eventos.html";    
     String html = getContent(filename);
     if(html.length() > 0) {
@@ -287,9 +287,9 @@ void handle_Lists(){
       for(int i = 0; i < agendaListaEncadeada.size(); i++){
         // Obtem a aplicação da lista
         agd = agendaListaEncadeada.get(i);
-        JSONmessage += "{\"id\": "+String(i+1)+",\"name\": \""+agd->name+"\",\"hour\": \""+agd->hour+"\",\"description\": \""+agd->description+"\"}"+',';
+        JSONmessage += "{\"id\": "+String(i+1)+",\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}"+",";
       }
-      request->send(HTTP_OK, getContentType(".json"), '['+JSONmessage.substring(0, JSONmessage.length()-1)+']');
+      request->send(HTTP_OK, getContentType(".json"), "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]");
     } else {
       request->send(HTTP_UNAUTHORIZED, getContentType(".txt"), WRONG_AUTHORIZATION);
     }
@@ -381,44 +381,48 @@ void handle_InsertItemList(){
     if(check_authorization_header(request)) {
       DynamicJsonDocument doc(MAX_STRING_LENGTH);
       String JSONmessageBody = getData(data, len);
-      
-      Serial.println("opa: "+JSONmessageBody);
-      
+           
       DeserializationError error = deserializeJson(doc, JSONmessageBody);
       if(error) {
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);
       } else {
-        //busco para checar se aplicacao já existe
-        int index = searchList(doc["name"],doc["hour"]);
-        if(index == -1) {
-          String JSONmessage;
-          // não existe, então posso inserir
-          // adiciona item na lista de aplicações jenkins 
-          addAgenda(doc["name"], doc["hour"], doc["description"]);  
-
-          // Grava no Storage
-          saveAgendaList();
-        
-          Agenda *agd;
-          for(int i = 0; i < agendaListaEncadeada.size(); i++){
-            // Obtem a aplicação da lista
-            agd = agendaListaEncadeada.get(i);
-            JSONmessage="{\"name\": \""+String(agd->name)+"\",\"hour\": \""+String(agd->hour)+"\",\"description\": \""+String(agd->description)+"\"}";
-            if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
-              JSONmessage+=',';
+        String hora = doc["dataAgenda"];
+        if (validaHora(hora)){
+          //busco para checar se aplicacao já existe
+          int index = searchList(hora);
+          if(index == -1) {
+            String JSONmessage;
+            // não existe, então posso inserir
+            // adiciona item na lista de aplicações jenkins 
+            addAgenda(hora);
+  
+            // Grava no Storage
+            saveAgendaList();
+          
+            Agenda *agd;
+            for(int i = 0; i < agendaListaEncadeada.size(); i++){
+              // Obtem a aplicação da lista
+              agd = agendaListaEncadeada.get(i);
+              JSONmessage="{\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}";
+              if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
+                JSONmessage+=",";
+              }
             }
+            JSONmessage="[" + JSONmessage +"]";
+            #ifdef DEBUG
+              Serial.println("handle_InsertItemList:"+JSONmessage);
+            #endif
+            // Grava no adafruit
+            // publish
+            mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
+            doc.clear();
+            request->send(HTTP_OK, getContentType(".json"), JSONmessage);
+          } else {
+            request->send(HTTP_CONFLICT, getContentType(".txt"), EXISTING_ITEM);
           }
-          JSONmessage='[' + JSONmessage +']';
-          #ifdef DEBUG
-            Serial.println("handle_InsertItemList:"+JSONmessage);
-          #endif
-          // Grava no adafruit
-          // publish
-          mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
-          doc.clear();
-          request->send(HTTP_OK, getContentType(".json"), JSONmessage);
-        } else {
-          request->send(HTTP_CONFLICT, getContentType(".txt"), EXISTING_ITEM);
+        }
+        else {
+          request->send(HTTP_CONFLICT, getContentType(".txt"), PARSER_ERROR);
         }
       }
    } else {
@@ -437,36 +441,41 @@ void handle_DeleteItemList(){
       if(error) {
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);
       } else {
-      //busco pela aplicacao a ser removida
-      int index = searchList(doc["name"],doc["hour"]);
-      if(index != -1) {
-        String JSONmessage;
-        //removo
-        agendaListaEncadeada.remove(index);
-        
-        // Grava no Storage
-        saveAgendaList();
-        
-        Agenda *agd;
-        for(int i = 0; i < agendaListaEncadeada.size(); i++){
-          // Obtem a aplicação da lista
-          agd = agendaListaEncadeada.get(i);
-          JSONmessage="{\"name\": \""+String(agd->name)+"\",\"hour\": \""+String(agd->hour)+"\",\"description\": \""+String(agd->description)+"\"}";
-          if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
-            JSONmessage+=',';
+        String hora = doc["dataAgenda"];
+        if (validaHora(hora)){
+        //busco pela aplicacao a ser removida
+        int index = searchList(hora);
+        if(index != -1) {
+          String JSONmessage;
+          //removo
+          agendaListaEncadeada.remove(index);
+          
+          // Grava no Storage
+          saveAgendaList();
+          
+          Agenda *agd;
+          for(int i = 0; i < agendaListaEncadeada.size(); i++){
+            // Obtem a aplicação da lista
+            agd = agendaListaEncadeada.get(i);
+            JSONmessage="{\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}";
+            if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
+              JSONmessage+=",";
+            }
           }
+          JSONmessage="[" + JSONmessage +"]";
+          #ifdef DEBUG
+            Serial.println("handle_DeleteItemList:"+JSONmessage);
+          #endif
+          // Grava no adafruit
+          // publish
+          mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
+          doc.clear();
+          request->send(HTTP_OK, getContentType(".txt"), REMOVED_ITEM);
+        } else {
+          request->send(HTTP_NOT_FOUND, getContentType(".txt"), NOT_FOUND_ITEM);
         }
-        JSONmessage='[' + JSONmessage +']';          
-        #ifdef DEBUG
-          Serial.println("handle_DeleteItemList:"+JSONmessage);
-        #endif
-        // Grava no adafruit
-        // publish
-        mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
-        doc.clear();
-        request->send(HTTP_OK, getContentType(".txt"), REMOVED_ITEM);
       } else {
-        request->send(HTTP_NOT_FOUND, getContentType(".txt"), NOT_FOUND_ITEM);
+        request->send(HTTP_CONFLICT, getContentType(".txt"), PARSER_ERROR);
       }
     }
    } else {

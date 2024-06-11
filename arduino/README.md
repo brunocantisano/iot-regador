@@ -177,6 +177,8 @@ sudo apt install python-is-python3
 - [React Charts](https://reactjsexample.com/a-react-environment-charts/)
 - [Github Emoticons](https://gist.github.com/rxaviers/7360908)
 - [API Rest - Antonio Mancuso](https://mancusoa74.blogspot.com/2018/02/simple-http-rest-server-on-esp8266.html)
+- [NTP Client](https://randomnerdtutorials.com/esp8266-nodemcu-date-time-ntp-client-server-arduino/)
+- [NTP Client](https://www.fernandok.com/2018/12/nao-perca-tempo-use-ntp.html)
 
 ## Bugs 🐛
 

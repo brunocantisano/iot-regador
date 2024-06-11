@@ -11,6 +11,9 @@
 #include <PubSubClient.h>
 #include <Preferences.h>
 #include <LittleFS.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <Regexp.h>
 
 const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 
@@ -53,7 +56,6 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 
 Preferences preferences;
 //---------------------------------//
-int timeSinceLastRead = 0;
 
 /* versão do firmware */
 const char version[] PROGMEM = API_VERSION;
@@ -84,16 +86,25 @@ String gateway;
 
 IPAddress localIP;
 //IPAddress localIP(192, 168, 1, 200); // hardcoded
-
 // Set your Gateway IP address
 IPAddress localGateway;
 //IPAddress localGateway(192, 168, 1, 1); //hardcoded
-IPAddress subnet(255, 255, 0, 0);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(1, 1, 1, 1);               // CloudFlare DNS server
 
 // Timer variables
 unsigned long previousMillis = 0;
 const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
 bool WIFI_CONFIG = false;
+
+//Fuso Horário
+int timeZone = -3;
+
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+NTPClient timeClient(
+                      ntpUDP,                 //socket udp
+                      "0.br.pool.ntp.org");
 
 String getContent(const char* filename) {
   String payload="";  
@@ -177,15 +188,40 @@ String getDataHora() {
     return String(buffer);
 }
 
-int searchList(String name, String hour) {
-  Agenda *agd;
+time_t getHoraAgora() {
+    struct tm myTime;
+       
+    time_t epochTime = timeClient.getEpochTime();  
+    String formattedTime = timeClient.getFormattedTime(); 
+    int currentHour = timeClient.getHours(); 
+    int currentMinute = timeClient.getMinutes();    
+    int currentSecond = timeClient.getSeconds();
+    //Get a time structure
+    struct tm *ptm = gmtime ((time_t *)&epochTime);   
+    int monthDay = ptm->tm_mday; 
+    int currentMonth = ptm->tm_mon;
+    int currentYear = ptm->tm_year;
+    myTime.tm_sec = currentSecond;       // seconds after the minute [0-60]
+    myTime.tm_min = currentMinute;      // minutes after the hour [0-59]
+    myTime.tm_hour = currentHour;     // hours since midnight [0-23]
+    myTime.tm_mday = monthDay;     // day of the month [1-31]
+    myTime.tm_mon = currentMonth;       // months since January [0-11]
+    myTime.tm_year = currentYear;    // years since 1900
+    myTime.tm_isdst = -1;    // daylight saving time flag (-1 for unknown)
+    time_t myTime_t = mktime(&myTime);
+
+    return myTime_t;
+}
+
+int searchList(String dataAgenda) {
+  Agenda *agd;  
   for(int i = 0; i < agendaListaEncadeada.size(); i++){
     // Obtem a aplicação da lista
     agd = agendaListaEncadeada.get(i);
-    if (name == agd->name && hour==agd->hour) {
+    if (dataAgenda==agd->dataAgenda) {
       return i;
     }
-  }
+  }  
   return -1;
 }
 
@@ -195,6 +231,7 @@ String getData(uint8_t *data, size_t len) {
     //Serial.write(data[i]);
     raw[i] = data[i];
   }
+  raw[len]=0x00;
   return String(raw);
 }
 
@@ -204,6 +241,10 @@ String IpAddress2String(const IPAddress& ipAddress)
            String(ipAddress[1]) + String(".") +
            String(ipAddress[2]) + String(".") +
            String(ipAddress[3]));
+}
+
+void setClock() {
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 }
 
 bool addSensor(byte id, byte gpio, byte status, const char* name) {
@@ -269,14 +310,25 @@ String readSensorStatus(byte gpio){
   return String(digitalRead(gpio));
 }
 
-void addAgenda(String name, String hour, String description) {
-  Agenda *agd = new Agenda();
-  agd->name = name;
-  agd->hour = hour;
-  agd->description = description;
+bool validaHora(String hora) {
+  char buf[MAX_PATH];
+  memset(buf, 0x00, MAX_PATH);
+  strcpy(buf, hora.c_str());
+  
+  MatchState ms;
+  ms.Target (buf);  // set its address      
+  unsigned int count = ms.MatchCount ("[0-2][0-3]:[0-5][0-9]");  
+  if(count == 1) return true;
+  return false;
+}
 
-  // Adiciona a aplicação na lista
-  agendaListaEncadeada.add(agd);
+void addAgenda(String dataAgenda) {
+  int ind = dataAgenda.indexOf(':');  //finds location of first ,
+  String hora = dataAgenda.substring(0, ind);
+  String minutos = dataAgenda.substring(ind+1, dataAgenda.length());  
+  Agenda *agdnew = new Agenda();  
+  agdnew->dataAgenda = dataAgenda;
+  agendaListaEncadeada.add(agdnew);
 }
 
 void saveAgendaList() {
@@ -285,9 +337,9 @@ void saveAgendaList() {
   for(int i = 0; i < agendaListaEncadeada.size(); i++){
     // Obtem a aplicação da lista
     agd = agendaListaEncadeada.get(i);
-    JSONmessage += "{\"name\": \""+String(agd->name)+"\",\"hour\": \""+String(agd->hour)+"\",\"description\": \""+String(agd->description)+"\"}"+',';
+    JSONmessage += "{\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}"+",";
   }
-  JSONmessage = '['+JSONmessage.substring(0, JSONmessage.length()-1)+']';
+  JSONmessage = "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]";
   // Grava no storage
   writeContent("/lista.json",JSONmessage); 
   // Grava no adafruit
@@ -299,7 +351,7 @@ int loadAgendaList() {
   String JSONmessage = getContent("/lista.json");
   if(JSONmessage == "") {    
     #ifdef DEBUG
-      Serial.println(F("Lista local de aplicações vazia"));
+      Serial.println(F("Lista local de eventos vazia"));
     #endif
     return -1;
   } else {
@@ -309,7 +361,7 @@ int loadAgendaList() {
       return 1;
     }
     for(int i = 0; i < doc.size(); i++){
-      addAgenda(doc[i]["name"], doc[i]["hour"], doc[i]["description"]);
+      addAgenda(doc[i]["dataAgenda"]);
     }    
   }
   return 0;
@@ -338,7 +390,7 @@ bool initWiFi() {
   localIP.fromString(ip.c_str());
   localGateway.fromString(gateway.c_str());
 
-  if (!WiFi.config(localIP, localGateway, subnet)){
+  if (!WiFi.config(localIP, localGateway, subnet, dns)){
     Serial.println("STA Falhou para configurar");
     return false;
   }
@@ -419,7 +471,8 @@ void setup() {
     // exibindo rota /update para atualização de firmware e filesystem
     AsyncElegantOTA.begin(&server, USER_FIRMWARE, PASS_FIRMWARE);
     /* Usa MDNS para resolver o DNS */
-    Serial.println("mDNS configurado e inicializado;");    
+    Serial.println("mDNS configurado e inicializado;");
+    setClock();
     if (!MDNS.begin(HOST)) 
     { 
         //http://regador.local (linux) e http://regador (windows)
@@ -432,6 +485,26 @@ void setup() {
     // carrega dados
     loadAgendaList();
     Serial.println("Regador esta funcionando!");
+    
+    // Initialize a NTPClient to get time
+    timeClient.begin();
+    // Set offset time in seconds to adjust for your timezone, for example:
+    // GMT +1 = 3600
+    // GMT +8 = 28800
+    // GMT -1 = -3600
+    // GMT 0 = 0
+    timeClient.setTimeOffset(timeZone*(3600));
+  
+    //Espera pelo primeiro update online
+    Serial.println("Waiting for first update");
+    while(!timeClient.update())
+    {
+        Serial.print(".");
+        timeClient.forceUpdate();
+        delay(500);
+    }
+    Serial.println("NTP update");
+     
     WIFI_CONFIG = true;
   }
   else {
@@ -446,35 +519,59 @@ void setup() {
   }
 }
 
-void loop(void) {
-  // Report every 1 minute.
-  if(timeSinceLastRead > 60000) {
-    timeSinceLastRead = 0;
+void nivelBaixo() {
+  // acendo a luz
+  Serial.println("Acendo a luz");
+  digitalWrite(RelayLight, LOW);
+  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "ON");
+    
+  // se a bomba estiver ligada
+  if(digitalRead(RelayWater) == LOW){
+    // desligo a bomba
+    Serial.println("Desligo a bomba");
+    digitalWrite(RelayWater, HIGH);
+    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"water").c_str(), "OFF");
   }
+}
+
+void nivelAlto() {
+  time_t horaAtual = getHoraAgora();
+
+  struct tm timeinfo;
+  char buffer[80];
+  gmtime_r(&horaAtual, &timeinfo);
+  //exemplo: 14:12
+  strftime (buffer,80,"%H:%M",&timeinfo);
+  //strftime (buffer,80,"%FT%T%z",&timeinfo);
+  //Serial.println("opa: "+String(buffer));
+
+  // checo se existe essa hora em evento agendado
+  //horaAtual
+  
+  // ligo a bomba
+  Serial.println("Ligo a bomba");
+  digitalWrite(RelayWater, LOW);
+  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"water").c_str(), "ON");
+
+  // removo da fila
+
+  
+  //apago a luz
+  Serial.println("Apago a luz");
+  digitalWrite(RelayLight, HIGH);
+  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "OFF");
+}
+
+void loop(void) {
   if(WIFI_CONFIG) {
     MDNS.update();
+/*
     // se nivel de agua baixou
-    int status = digitalRead(RelayLevel);
-    if(status == LOW) {      
-      // desligar a bomba
-      if(RelayWater == LOW){
-        // acendo a luz
-        Serial.println("Acendo a luz");
-        digitalWrite(RelayLight, LOW);
-        mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "ON");
-        Serial.println("Desligo a bomba");
-        digitalWrite(RelayWater, HIGH);
-        mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"water").c_str(), "OFF");        
-      }
+    if(digitalRead(RelayLevel) == LOW) {      
+      nivelBaixo();
     } else {      
-      if(RelayLight == LOW){
-        //apago a luz
-        Serial.println("Apago a luz");
-        digitalWrite(RelayLight, HIGH);
-        mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "OFF");
-      }
-    }    
+      nivelAlto();
+    }
+*/    
   }
-  delay(1000);
-  timeSinceLastRead += 1000;
 }

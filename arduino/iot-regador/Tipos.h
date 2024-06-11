@@ -4,9 +4,7 @@
 /************* lista de aplicacoes jenkins *************/
 class Agenda {
   public:
-    String name;
-    String hour;
-    String description;    
+    String dataAgenda;
 };
 /******************************************************/
 /******************* lista de sensores ****************/

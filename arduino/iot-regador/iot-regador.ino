@@ -174,12 +174,13 @@ String humanReadableSize(const size_t bytes) {
 }
 
 String getDataHora() {
-    time_t horaAtual = getHoraAgora();
+    time_t nowSecs = millis()/1000;
     struct tm timeinfo;
-    char buffer[80];
-    gmtime_r(&horaAtual, &timeinfo);
-    strftime (buffer,80,"%FT%T%z",&timeinfo);
-    return String(buffer);
+    char time_converted[80];
+    gmtime_r(&nowSecs, &timeinfo);
+    // HH:MM:SS
+    strftime (time_converted,80,"%H:%M:%S",&timeinfo);    
+    return String(time_converted);
 }
 
 time_t getHoraAgora() {
@@ -308,16 +309,16 @@ bool validaHora(String hora) {
   char buf[MAX_PATH];
   memset(buf, 0x00, MAX_PATH);
   strcpy(buf, hora.c_str());
-  
   MatchState ms;
-  ms.Target (buf);  // set its address      
-  unsigned int count = ms.MatchCount ("[0-2][0-3]:[0-5][0-9]");  
+  ms.Target (buf);
+  unsigned int count = ms.MatchCount ("[0-9][0-9]:[0-9][0-9]");
+  Serial.println("count="+String(count));
   if(count == 1) return true;
   return false;
 }
 
 void addAgenda(String dataAgenda) {
-  int ind = dataAgenda.indexOf(':');  //finds location of first ,
+  int ind = dataAgenda.indexOf(':');
   String hora = dataAgenda.substring(0, ind);
   String minutos = dataAgenda.substring(ind+1, dataAgenda.length());  
   Agenda *agdnew = new Agenda();  
@@ -331,7 +332,7 @@ void saveAgendaList() {
   for(int i = 0; i < agendaListaEncadeada.size(); i++){
     // Obtem a aplicação da lista
     agd = agendaListaEncadeada.get(i);
-    JSONmessage += "{\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}"+",";
+    JSONmessage += "{\"dataAgenda\": \""+agd->dataAgenda+"\"}"+",";
   }
   JSONmessage = "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]";
   // Grava no storage
@@ -478,8 +479,11 @@ void setup() {
     }
     // carrega dados
     loadAgendaList();
-    Serial.println("Regador esta funcionando!");
-    
+
+    //connecting to a mqtt broker
+    mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+    mqttClient.setCallback(callback);
+            
     // Initialize a NTPClient to get time
     timeClient.begin();
     // Set offset time in seconds to adjust for your timezone, for example:
@@ -490,16 +494,17 @@ void setup() {
     timeClient.setTimeOffset(timeZone*(3600));
   
     //Espera pelo primeiro update online
-    Serial.println("Waiting for first update");
+    Serial.println("Esperando para sincronizar com o NTP");
     while(!timeClient.update())
     {
         Serial.print(".");
         timeClient.forceUpdate();
         delay(500);
     }
-    Serial.println("NTP update");
+    Serial.println("Sincronizado com o servidor NTP");
      
     WIFI_CONFIG = true;
+    Serial.println("Regador esta funcionando!");
   }
   else {
     // Conecta a rede Wi-Fi com SSID e senha
@@ -513,18 +518,94 @@ void setup() {
   }
 }
 
+void callback(char *topic, byte *payload, unsigned int length) {
+  byte gpio;
+  String message;
+  
+  #ifdef DEBUG
+    Serial.print(F("Mensagem que chegou no tópico: "));
+    Serial.println(topic);
+    Serial.print(F("Mensagem:"));
+  #endif
+          
+  for (int i = 0; i < length; i++) {
+     message+=(char) payload[i];
+  }
+  #ifdef DEBUG
+    Serial.println(message);
+  #endif
+
+  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/water")).c_str()) {
+    digitalWrite(RelayWater, message=="ON"?1:0);
+  }
+  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/light")).c_str()) {
+    digitalWrite(RelayLight, message=="ON"?1:0);
+  }
+  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/level")).c_str()) {
+    digitalWrite(RelayLevel, message=="ON"?1:0);
+  }
+  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/list")).c_str()) {
+    DynamicJsonDocument doc(MAX_STRING_LENGTH);
+    // ler do feed list no adafruit
+    if(message == "") {    
+      #ifdef DEBUG
+        Serial.println(F("Lista de agendamentos vazia"));
+      #endif
+      // carrega lista a partir do storage      
+      if(loadAgendaList()>=0) saveAgendaList();
+    } else {
+      DeserializationError error = deserializeJson(doc, message);
+      if (error) {
+        #ifdef DEBUG
+          Serial.println(F("Erro ao fazer o parser da lista vindo do Adafruit"));
+        #endif
+      }
+      for(int i = 0; i < doc.size(); i++){
+        addAgenda(doc[i]["dataAgenda"]);
+      }
+    }
+  }
+  #ifdef DEBUG
+    Serial.println(F("-----------------------"));
+  #endif
+}
+
+void reconnect() {
+  // Loop até que esteja reconectado
+  while (!mqttClient.connected()) {
+    Serial.println("Tentando conexão com o servidor MQTT...");
+    String client_id = String(HOST)+".local-"+String(WiFi.macAddress());
+    #ifdef DEBUG
+      Serial.printf("O cliente %s conecta ao mqtt broker publico\n", client_id.c_str());
+    #endif      
+    if (mqttClient.connect(client_id.c_str(), MQTT_USERNAME, MQTT_PASSWORD)) {
+      Serial.println(F("Adafruit mqtt broker conectado"));
+      // Subscribe
+      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/water")).c_str());
+      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/light")).c_str());
+      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/level")).c_str());
+      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/list")).c_str());      //
+    } else {
+      #ifdef DEBUG
+        Serial.printf("Falhou com o estado %d\nNao foi possivel conectar com o broker mqtt.\nPor favor, verifique as credenciais e instale uma nova versão de firmware.\nTentando novamente em 5 segundos.", mqttClient.state());
+      #endif
+      delay(5000);
+    }
+  }
+}
+
 void nivelBaixo() {
   // acendo a luz
   Serial.println("Acendo a luz");
   digitalWrite(RelayLight, LOW);
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "ON");
+  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "ON");
     
   // se a bomba estiver ligada
   if(digitalRead(RelayWater) == LOW){
     // desligo a bomba
     Serial.println("Desligo a bomba");
     digitalWrite(RelayWater, HIGH);
-    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"water").c_str(), "OFF");
+    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/water")).c_str(), "OFF");
   }
 }
 
@@ -540,7 +621,7 @@ void nivelAlto() {
   // ligo a bomba
   Serial.println("Ligo a bomba");
   digitalWrite(RelayWater, LOW);
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"water").c_str(), "ON");
+  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/water")).c_str(), "ON");
 
   // removo da fila
 
@@ -548,12 +629,29 @@ void nivelAlto() {
   //apago a luz
   Serial.println("Apago a luz");
   digitalWrite(RelayLight, HIGH);
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+"light").c_str(), "OFF");
+  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "OFF");
 }
 
 void loop(void) {
+  if (!mqttClient.connected()) {
+    // tento conectar no MQTT somente se já tiver rede
+    if(WIFI_CONFIG) reconnect();
+  }
+  mqttClient.loop();
+  
   if(WIFI_CONFIG) {
     MDNS.update();
+
+    time_t horaAtual = getHoraAgora();
+
+    struct tm timeinfo;
+    char horaTemp[80];
+    gmtime_r(&horaAtual, &timeinfo);
+    //exemplo: 14:12
+    strftime (horaTemp,80,"%H:%M",&timeinfo);
+    if(searchList(String(horaTemp)) > 0) {
+      Serial.println("bateu com a hora do agendamento");
+    }
 /*
     // se nivel de agua baixou
     if(digitalRead(RelayLevel) == LOW) {      

@@ -1,11 +1,11 @@
 const char WRONG_AUTHORIZATION[] PROGMEM = "Authorization token errado";
 const char WRONG_STATUS[] PROGMEM = "Erro ao atualizar o status";
-
 const char EXISTING_ITEM[] PROGMEM = "Item já existente na lista";
 const char REMOVED_ITEM[] PROGMEM = "Item removido da lista";
 const char NOT_FOUND_ITEM[] PROGMEM = "Item não encontrado na lista";
 const char NOT_FOUND_ROUTE[] PROGMEM = "Rota nao encontrada";
 const char PARSER_ERROR[] PROGMEM = "{\"message\": \"Erro ao fazer parser do json\"}";
+const char HOUR_ERROR[] PROGMEM = "{\"message\": \"Erro ao validar hora de agendamento\"}";
 const char WEB_SERVER_CONFIG[] PROGMEM = "\nConfiguring Webserver ...";
 const char WEB_SERVER_STARTED[] PROGMEM = "Webserver started";
 const char HTML_MISSING_DATA_UPLOAD[] PROGMEM = "<!DOCTYPE html><html lang=\"en\"><head><title>Regador ESP8266</title>" 
@@ -225,9 +225,10 @@ void handle_SwaggerUI(){
 
 void handle_Health(){
   server.on("/health", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //String mqttConnected = mqttClient.connected()?"true":"false";    
-    //String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"date\": \""+getDataHora()+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+version+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
-    String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\"}";
+    String mqttConnected = "false";
+    if(mqttClient.connected()) mqttConnected = "true";
+    String time_working = getDataHora();
+    String JSONmessage = "{\"greeting\": \"Bem vindo ao Regador ESP8266 REST Web Server\",\"time_working\": \""+time_working+"\",\"url\": \"/health\",\"mqtt\": \""+mqttConnected+"\",\"version\": \""+String(version)+"\",\"ip\": \""+String(IpAddress2String(WiFi.localIP()))+"\"}";
     request->send(HTTP_OK, getContentType(".json"), JSONmessage);
   });
 }
@@ -386,7 +387,7 @@ void handle_InsertItemList(){
       if(error) {
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);
       } else {
-        String hora = doc["dataAgenda"];
+        String hora = String(doc["dataAgenda"]);
         if (validaHora(hora)){
           //busco para checar se aplicacao já existe
           int index = searchList(hora);
@@ -422,7 +423,7 @@ void handle_InsertItemList(){
           }
         }
         else {
-          request->send(HTTP_CONFLICT, getContentType(".txt"), PARSER_ERROR);
+          request->send(HTTP_CONFLICT, getContentType(".txt"), HOUR_ERROR);
         }
       }
    } else {
@@ -441,7 +442,7 @@ void handle_DeleteItemList(){
       if(error) {
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);
       } else {
-        String hora = doc["dataAgenda"];
+        String hora = String(doc["dataAgenda"]);
         if (validaHora(hora)){
         //busco pela aplicacao a ser removida
         int index = searchList(hora);
@@ -475,7 +476,7 @@ void handle_DeleteItemList(){
           request->send(HTTP_NOT_FOUND, getContentType(".txt"), NOT_FOUND_ITEM);
         }
       } else {
-        request->send(HTTP_CONFLICT, getContentType(".txt"), PARSER_ERROR);
+        request->send(HTTP_CONFLICT, getContentType(".txt"), HOUR_ERROR);
       }
     }
    } else {

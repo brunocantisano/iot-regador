@@ -560,9 +560,11 @@ void callback(char *topic, byte *payload, unsigned int length) {
           Serial.println(F("Erro ao fazer o parser da lista vindo do Adafruit"));
         #endif
       }
+      /*
       for(int i = 0; i < doc.size(); i++){
         addAgenda(doc[i]["dataAgenda"]);
       }
+      */
     }
   }
   #ifdef DEBUG

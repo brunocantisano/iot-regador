@@ -55,6 +55,8 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 #define HTTP_CONFLICT              409
 
 Preferences preferences;
+
+int timeSinceLastRead = 0;
 //---------------------------------//
 
 /* versão do firmware */
@@ -209,7 +211,7 @@ time_t getHoraAgora() {
 }
 
 int searchList(String dataAgenda) {
-  Agenda *agd;  
+  Agenda *agd;
   for(int i = 0; i < agendaListaEncadeada.size(); i++){
     // Obtem a aplicação da lista
     agd = agendaListaEncadeada.get(i);
@@ -518,6 +520,17 @@ void setup() {
   }
 }
 
+bool removeItemLista(String dataAgenda) {
+  //busco pela aplicacao a ser removida
+  int index = searchList(dataAgenda);
+  if(index != -1) {
+    //removo
+    agendaListaEncadeada.remove(index);
+    return true;
+  }
+  return false;
+}
+
 void callback(char *topic, byte *payload, unsigned int length) {
   byte gpio;
   String message;
@@ -551,8 +564,13 @@ void callback(char *topic, byte *payload, unsigned int length) {
       #ifdef DEBUG
         Serial.println(F("Lista de agendamentos vazia"));
       #endif
-      // carrega lista a partir do storage      
-      if(loadAgendaList()>=0) saveAgendaList();
+      // carrega lista a partir do storage
+      loadAgendaList();
+      /*
+      if(loadAgendaList()>=0) {
+        //saveAgendaList();
+      }
+      */
     } else {
       DeserializationError error = deserializeJson(doc, message);
       if (error) {
@@ -597,41 +615,38 @@ void reconnect() {
 }
 
 void nivelBaixo() {
-  // acendo a luz
-  Serial.println("Acendo a luz");
-  digitalWrite(RelayLight, LOW);
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "ON");
-    
+  if(digitalRead(RelayLight)==LOW) {
+    // acendo a luz
+    Serial.println("Acendo a luz");
+    digitalWrite(RelayLight, HIGH);
+    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "ON");
+  }  
   // se a bomba estiver ligada
-  if(digitalRead(RelayWater) == LOW){
+  if(digitalRead(RelayWater) == HIGH){
     // desligo a bomba
     Serial.println("Desligo a bomba");
-    digitalWrite(RelayWater, HIGH);
+    digitalWrite(RelayWater, LOW);
     mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/water")).c_str(), "OFF");
   }
 }
 
-void nivelAlto() {
-  time_t horaAtual = getHoraAgora();
-
-  struct tm timeinfo;
-  char buffer[80];
-  gmtime_r(&horaAtual, &timeinfo);
-  //exemplo: 14:12
-  strftime (buffer,80,"%H:%M",&timeinfo);
-  
+void nivelAlto(String dataAgenda) { 
   // ligo a bomba
-  Serial.println("Ligo a bomba");
-  digitalWrite(RelayWater, LOW);
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/water")).c_str(), "ON");
-
-  // removo da fila
-
-  
+  if(digitalRead(RelayWater)==LOW) {
+    Serial.println("Ligo a bomba");
+    digitalWrite(RelayWater, HIGH);
+    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/water")).c_str(), "ON");
+  }
   //apago a luz
-  Serial.println("Apago a luz");
-  digitalWrite(RelayLight, HIGH);
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "OFF");
+  if(digitalRead(RelayLight)==HIGH) {
+    Serial.println("Apago a luz");
+    digitalWrite(RelayLight, LOW);
+    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "OFF");
+  }
+  // removo da fila
+  if(removeItemLista(dataAgenda)) {
+   Serial.println("Removido agendamento apos regar as plantas");
+  }
 }
 
 void loop(void) {
@@ -644,23 +659,30 @@ void loop(void) {
   if(WIFI_CONFIG) {
     MDNS.update();
 
-    time_t horaAtual = getHoraAgora();
-
-    struct tm timeinfo;
-    char horaTemp[80];
-    gmtime_r(&horaAtual, &timeinfo);
-    //exemplo: 14:12
-    strftime (horaTemp,80,"%H:%M",&timeinfo);
-    if(searchList(String(horaTemp)) > 0) {
-      Serial.println("bateu com a hora do agendamento");
+    // Report every 1 minuto.
+    if(timeSinceLastRead > 1000) {
+      time_t horaAtual = getHoraAgora();
+  
+      struct tm timeinfo;
+      char horaTemp[80];
+      gmtime_r(&horaAtual, &timeinfo);
+      //exemplo: 14:12
+      strftime (horaTemp,80,"%H:%M",&timeinfo);
+      if(searchList(String(horaTemp)) >= 0) {
+        Serial.println("bateu com a hora do agendamento");
+        // se nivel de agua baixou
+        if(digitalRead(RelayLevel) == LOW) {      
+          nivelBaixo();
+        } else {      
+          nivelAlto(String(horaTemp));
+        }
+      } else {
+        //Serial.println("Desligar se algo estiver ligado");
+        nivelBaixo();
+      }
+      timeSinceLastRead = 0;
     }
-/*
-    // se nivel de agua baixou
-    if(digitalRead(RelayLevel) == LOW) {      
-      nivelBaixo();
-    } else {      
-      nivelAlto();
-    }
-*/    
+    delay(100);
+    timeSinceLastRead += 100;  
   }
 }

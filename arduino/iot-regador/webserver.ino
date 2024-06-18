@@ -442,46 +442,42 @@ void handle_DeleteItemList(){
       if(error) {
         request->send(HTTP_BAD_REQUEST, getContentType(".json"), PARSER_ERROR);
       } else {
-        String hora = String(doc["dataAgenda"]);
-        if (validaHora(hora)){
-        //busco pela aplicacao a ser removida
-        int index = searchList(hora);
-        if(index != -1) {
-          String JSONmessage;
-          //removo
-          agendaListaEncadeada.remove(index);
-          
-          // Grava no Storage
-          saveAgendaList();
-          
-          Agenda *agd;
-          for(int i = 0; i < agendaListaEncadeada.size(); i++){
-            // Obtem a aplicação da lista
-            agd = agendaListaEncadeada.get(i);
-            JSONmessage="{\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}";
-            if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
-              JSONmessage+=",";
+        String dataAgenda = String(doc["dataAgenda"]);
+        if (validaHora(dataAgenda)){
+          if(removeItemLista(dataAgenda)) {
+            String JSONmessage;
+            
+            // Grava no Storage
+            saveAgendaList();
+            
+            Agenda *agd;
+            for(int i = 0; i < agendaListaEncadeada.size(); i++){
+              // Obtem a aplicação da lista
+              agd = agendaListaEncadeada.get(i);
+              JSONmessage="{\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}";
+              if((i < agendaListaEncadeada.size()) && (i < agendaListaEncadeada.size()-1)) {
+                JSONmessage+=",";
+              }
             }
+            JSONmessage="[" + JSONmessage +"]";
+            #ifdef DEBUG
+              Serial.println("handle_DeleteItemList:"+JSONmessage);
+            #endif
+            // Grava no adafruit
+            // publish
+            mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
+            doc.clear();
+            request->send(HTTP_OK, getContentType(".txt"), REMOVED_ITEM);
+          } else {
+            request->send(HTTP_CONFLICT, getContentType(".txt"), HOUR_ERROR);
           }
-          JSONmessage="[" + JSONmessage +"]";
-          #ifdef DEBUG
-            Serial.println("handle_DeleteItemList:"+JSONmessage);
-          #endif
-          // Grava no adafruit
-          // publish
-          mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
-          doc.clear();
-          request->send(HTTP_OK, getContentType(".txt"), REMOVED_ITEM);
         } else {
-          request->send(HTTP_NOT_FOUND, getContentType(".txt"), NOT_FOUND_ITEM);
+          request->send(HTTP_BAD_REQUEST, getContentType(".txt"), NOT_FOUND_ITEM);
         }
-      } else {
-        request->send(HTTP_CONFLICT, getContentType(".txt"), HOUR_ERROR);
       }
+    } else {
+      request->send(HTTP_UNAUTHORIZED, getContentType(".txt"), WRONG_AUTHORIZATION);
     }
-   } else {
-    request->send(HTTP_UNAUTHORIZED, getContentType(".txt"), WRONG_AUTHORIZATION);
-   }
   });
 }
 

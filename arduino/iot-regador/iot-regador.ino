@@ -340,7 +340,7 @@ void saveAgendaList() {
   // Grava no storage
   writeContent("/lista.json",JSONmessage); 
   // Grava no adafruit
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
+  Publish("list", JSONmessage.c_str());
 }
 
 int loadAgendaList() {
@@ -590,6 +590,11 @@ void callback(char *topic, byte *payload, unsigned int length) {
   #endif
 }
 
+void Subscribe(String topic) {
+  // Subscribe
+  mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/"+topic)).c_str());
+}
+
 void reconnect() {
   // Loop até que esteja reconectado
   while (!mqttClient.connected()) {
@@ -600,11 +605,9 @@ void reconnect() {
     #endif      
     if (mqttClient.connect(client_id.c_str(), MQTT_USERNAME, MQTT_PASSWORD)) {
       Serial.println(F("Adafruit mqtt broker conectado"));
-      // Subscribe
-      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/water")).c_str());
-      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/light")).c_str());
-      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/level")).c_str());
-      mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/list")).c_str());      //
+      Subscribe("water");      
+      Subscribe("level");
+      Subscribe("list");
     } else {
       #ifdef DEBUG
         Serial.printf("Falhou com o estado %d\nNao foi possivel conectar com o broker mqtt.\nPor favor, verifique as credenciais e instale uma nova versão de firmware.\nTentando novamente em 5 segundos.", mqttClient.state());
@@ -614,39 +617,39 @@ void reconnect() {
   }
 }
 
-void nivelBaixo() {
-  if(digitalRead(RelayLight)==LOW) {
-    // acendo a luz
-    Serial.println("Acendo a luz");
-    digitalWrite(RelayLight, HIGH);
-    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "ON");
-  }  
-  // se a bomba estiver ligada
-  if(digitalRead(RelayWater) == HIGH){
-    // desligo a bomba
-    Serial.println("Desligo a bomba");
-    digitalWrite(RelayWater, LOW);
-    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/water")).c_str(), "OFF");
-  }
+void Publish(String topic, String status) {
+  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/"+topic)).c_str(), status.c_str());
 }
 
-void nivelAlto(String dataAgenda) { 
+void nivelBaixo() {
+  // se a bomba estiver ligada
+  DesligarBomba();
+}
+
+void nivelAlto() { 
   // ligo a bomba
-  if(digitalRead(RelayWater)==LOW) {
-    Serial.println("Ligo a bomba");
-    digitalWrite(RelayWater, HIGH);
-    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/water")).c_str(), "ON");
-  }
+  LigarBomba();
+}
+
+void LigarBomba(){
+  Serial.println("Ligo a bomba");
+  digitalWrite(RelayWater, HIGH);
+  Publish("water", "ON");
+  
+  // acendo a luz
+  Serial.println("Acendo a luz");
+  digitalWrite(RelayLight, HIGH);  
+}
+ 
+void DesligarBomba(){
+  // desligo a bomba
+  Serial.println("Desligo a bomba");
+  digitalWrite(RelayWater, LOW);
+  Publish("water", "OFF");
+
   //apago a luz
-  if(digitalRead(RelayLight)==HIGH) {
-    Serial.println("Apago a luz");
-    digitalWrite(RelayLight, LOW);
-    mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/light")).c_str(), "OFF");
-  }
-  // removo da fila
-  if(removeItemLista(dataAgenda)) {
-   Serial.println("Removido agendamento apos regar as plantas");
-  }
+  Serial.println("Apago a luz");
+  digitalWrite(RelayLight, LOW);
 }
 
 void loop(void) {
@@ -658,7 +661,7 @@ void loop(void) {
   
   if(WIFI_CONFIG) {
     MDNS.update();
-
+        
     // Report every 1 minuto.
     if(timeSinceLastRead > 1000) {
       time_t horaAtual = getHoraAgora();
@@ -670,15 +673,18 @@ void loop(void) {
       strftime (horaTemp,80,"%H:%M",&timeinfo);
       if(searchList(String(horaTemp)) >= 0) {
         Serial.println("bateu com a hora do agendamento");
-        // se nivel de agua baixou
-        if(digitalRead(RelayLevel) == LOW) {      
-          nivelBaixo();
-        } else {      
-          nivelAlto(String(horaTemp));
-        }
-      } else {
-        //Serial.println("Desligar se algo estiver ligado");
-        nivelBaixo();
+          // se nivel de agua baixou
+          if(digitalRead(RelayLevel) == HIGH) {
+            nivelBaixo();
+          } else {
+            nivelAlto();
+            //espero por 1 minuto para molhar
+            delay(60000);
+          }
+          // removo da fila
+          if(removeItemLista(horaTemp)) {
+           Serial.println("Removido agendamento apos regar as plantas");
+          }
       }
       timeSinceLastRead = 0;
     }

@@ -260,16 +260,13 @@ void handle_Ports(){
 void handle_Sensors() {
   server.on("/sensors", HTTP_GET, [](AsyncWebServerRequest *request) {
     //"/sensors?type=water"
-    //"/sensors?type=light"
     //"/sensors?type=level"
     if(check_authorization_header(request)) {
       int relayPin = RelayWater;
       int paramsNr = request->params();
       for(int i=0;i<paramsNr;i++){
         AsyncWebParameter* p = request->getParam(i);
-        if (strcmp("light", p->value().c_str())==0){
-          relayPin = RelayLight;
-        } else if(strcmp("level", p->value().c_str())==0){
+        if(strcmp("level", p->value().c_str())==0){
           relayPin = RelayLevel;
         }
       }
@@ -309,8 +306,8 @@ void handle_UpdateSensors(){
       for(int i=0;i<paramsNr;i++){
         AsyncWebParameter* p = request->getParam(i);
         feedName = p->value();
-        if(strcmp("light", p->value().c_str())==0){
-          sensor = RelayLight;
+        if(strcmp("level", p->value().c_str())==0){
+          sensor = RelayLevel;
         }
       }
       */
@@ -328,7 +325,7 @@ void handle_UpdateSensors(){
           }
           digitalWrite(arduinoSensorPort->gpio, arduinoSensorPort->status);
           // publish
-          mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/")+feedName).c_str(), arduinoSensorPort->status==0?"OFF":"ON");
+          Publish(feedName, arduinoSensorPort->status==0?"OFF":"ON");
           doc.clear();
           request->send(HTTP_OK, getContentType(".json"), JSONmessage);
         } else {
@@ -415,7 +412,7 @@ void handle_InsertItemList(){
             #endif
             // Grava no adafruit
             // publish
-            mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
+            Publish("list", JSONmessage.c_str());
             doc.clear();
             request->send(HTTP_OK, getContentType(".json"), JSONmessage);
           } else {
@@ -465,7 +462,7 @@ void handle_DeleteItemList(){
             #endif
             // Grava no adafruit
             // publish
-            mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/list")).c_str(), JSONmessage.c_str());
+            Publish("list", JSONmessage.c_str());
             doc.clear();
             request->send(HTTP_OK, getContentType(".txt"), REMOVED_ITEM);
           } else {

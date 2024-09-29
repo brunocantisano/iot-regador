@@ -4,7 +4,6 @@
 #include <ESP8266WiFi.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <AsyncElegantOTA.h>
 #include <WiFiClientSecure.h>
 #include <ESP8266mDNS.h>
 #include <ArduinoJson.h>
@@ -465,8 +464,7 @@ void setup() {
       Serial.print("        DNS 3: "); Serial.println(WiFi.dnsIP(2));   
     #endif
     startWebServer();
-    // exibindo rota /update para atualização de firmware e filesystem
-    AsyncElegantOTA.begin(&server, USER_FIRMWARE, PASS_FIRMWARE);
+
     /* Usa MDNS para resolver o DNS */
     Serial.println("mDNS configurado e inicializado;");
     setClock();

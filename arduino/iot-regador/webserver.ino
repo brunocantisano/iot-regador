@@ -44,6 +44,7 @@ void startWebServer() {
   handle_UpdateSensors();
   handle_InsertItemList();
   handle_DeleteItemList();
+  handle_UpdateFirmware();
   // ------------------------------------ //
   // se não se enquadrar em nenhuma das rotas
   handle_OnError();
@@ -338,41 +339,6 @@ void handle_UpdateSensors(){
   });
 }
 
-// handles uploads to storage
-void handleUploadStorage(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
-  String logmessage = "Cliente:" + request->client()->remoteIP().toString() + "-" + request->url() + "-" + filename;
-  #ifdef DEBUG
-    Serial.println(logmessage);
-  #endif
-  if (!index) {
-    logmessage = "Upload Iniciado: " + String(filename);
-    // open the file on first call and store the file handle in the request object
-    request->_tempFile = LittleFS.open("/" + filename, "w");
-    #ifdef DEBUG
-      Serial.println(logmessage);
-    #endif
-  }
-
-  if (len) {
-    // stream the incoming chunk to the opened file
-    request->_tempFile.write(data, len);
-    logmessage = "Escrevendo arquivo: " + String(filename) + " index=" + String(index) + " len=" + String(len);
-    #ifdef DEBUG
-      Serial.println(logmessage);
-    #endif
-  }
-
-  if (final) {
-    logmessage = "Upload Completo: " + String(filename) + ",size: " + String(index + len);
-    // close the file handle as the upload is now done
-    request->_tempFile.close();
-    #ifdef DEBUG
-      Serial.println(logmessage);
-    #endif
-    request->redirect("/");
-  }
-}
-
 void handle_InsertItemList(){
   server.on("/list", HTTP_POST, [](AsyncWebServerRequest * request){}, NULL,
     [](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
@@ -475,6 +441,12 @@ void handle_DeleteItemList(){
     } else {
       request->send(HTTP_UNAUTHORIZED, getContentType(".txt"), WRONG_AUTHORIZATION);
     }
+  });
+}
+
+void handle_UpdateFirmware() {
+  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "ElegantOTA");
   });
 }
 

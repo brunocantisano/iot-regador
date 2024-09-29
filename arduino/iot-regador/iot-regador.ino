@@ -377,6 +377,20 @@ void StatusCallback(void *cbData, int code, const char *string)
 
 // Initialize WiFi
 bool initWiFi() {
+  preferences.begin("store", false);
+
+  ssid = preferences.getString(PARAM_INPUT_1);
+  pass = preferences.getString(PARAM_INPUT_2);
+  ip = preferences.getString(PARAM_INPUT_3);
+  gateway = preferences.getString(PARAM_INPUT_4);
+  preferences.end();
+
+  Serial.println(ssid);
+  Serial.println(pass);
+  Serial.println(ip);
+  Serial.println(gateway);
+
+
   if(ssid=="" || ip==""){
     Serial.println("SSID ou endereço IP indefinido.");
     return false;
@@ -438,17 +452,7 @@ void setup() {
     #endif
   }
   
-  ssid = preferences.getString(PARAM_INPUT_1);
-  pass = preferences.getString(PARAM_INPUT_2);
-  ip = preferences.getString(PARAM_INPUT_3);
-  gateway = preferences.getString(PARAM_INPUT_4);
-  
-  Serial.println(ssid);
-  Serial.println(pass);
-  Serial.println(ip);
-  Serial.println(gateway);
-
-  if(initWiFi()) {    
+   if(initWiFi()) {    
     #ifdef DEBUG
       Serial.println("\n\nNetwork Configuration:");
       Serial.println("----------------------");

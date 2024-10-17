@@ -189,7 +189,7 @@ void handle_Home(){
       html = HTML_MISSING_DATA_UPLOAD;  
     }
     request->send(HTTP_OK, getContentType(filename), html);
-  });
+  });  
 }
 
 void handle_Eventos(){
@@ -213,7 +213,7 @@ void handle_Swagger(){
     String json = getContent(filename);
     if(json.length() > 0) {
       json.replace("0.0.0",version);
-      json.replace("HOST_WATER",String(HOST)+".local");
+      json.replace("HOST_WATER",String(HOST));
     } else {
       json = HTML_MISSING_DATA_UPLOAD;  
     }
@@ -226,12 +226,12 @@ void handle_SwaggerUI(){
     char filename[] = "/swaggerUI.html";
     String html = getContent(filename);    
     if(html.length() > 0) {
-      html.replace("HOST_WATER",String(HOST)+".local");
+      html.replace("HOST_WATER",String(HOST));
     } else {
       html = HTML_MISSING_DATA_UPLOAD;
     }
     request->send(HTTP_OK, getContentType(filename), html);
-  });  
+  });
 }
 
 void handle_Health(){

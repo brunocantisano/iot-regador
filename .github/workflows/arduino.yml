@@ -140,13 +140,12 @@ jobs:
     - name: Binários - ${{ matrix.iot-regador }} ${{ matrix.board }}
       run: |
         docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
-#        mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin        
 
     # Archive the package
     - name: Compress files
       uses: montudor/action-zip@v1
       with:
-        args: zip -r ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip ${{ env.BUILD_OUT_DIR }}
+        args: zip -r ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip $(pwd)/${{ env.App_Packages_Directory }}
 
     - name: Upload artifact
       uses: actions/upload-artifact@v3

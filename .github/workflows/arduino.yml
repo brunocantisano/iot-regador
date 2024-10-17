@@ -139,8 +139,8 @@ jobs:
 
     - name: Binários - ${{ matrix.iot-regador }} ${{ matrix.board }}
       run: |
-        docker run -it -v $PWD:$PWD -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $PWD/${{ matrix.iot-regador }}/data $PWD/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{ env.Version }}-fs.bin
-        mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin        
+        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
+#        mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin        
 
     # Archive the package
     - name: Compress files

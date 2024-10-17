@@ -73,12 +73,6 @@ PubSubClient mqttClient(espClient);
 
 AsyncWebServer server(HTTP_REST_PORT);               // initialise webserver
 
-// Search for parameter in HTTP POST request
-const char* PARAM_INPUT_1 = "ssid";
-const char* PARAM_INPUT_2 = "pass";
-const char* PARAM_INPUT_3 = "ip";
-const char* PARAM_INPUT_4 = "gateway";
-
 //Variables to save values from HTML form
 String ssid;
 String pass;
@@ -377,56 +371,55 @@ void StatusCallback(void *cbData, int code, const char *string)
 
 // Initialize WiFi
 bool initWiFi() {
-  preferences.begin("store", false);
-
-  ssid = preferences.getString(PARAM_INPUT_1);
-  pass = preferences.getString(PARAM_INPUT_2);
-  ip = preferences.getString(PARAM_INPUT_3);
-  gateway = preferences.getString(PARAM_INPUT_4);
-  preferences.end();
+  // Search for parameter in HTTP POST request
+  //Variables to save values from HTML form
+  String ssid = preferences.getString("ssid");
+  String pass = preferences.getString("pass");
+  String ip = preferences.getString("ip");
+  String gateway = preferences.getString("gateway");
 
   Serial.println(ssid);
   Serial.println(pass);
   Serial.println(ip);
   Serial.println(gateway);
-
-
+  
   if(ssid=="" || ip==""){
     Serial.println("SSID ou endereço IP indefinido.");
     return false;
   }
 
-  WiFi.mode(WIFI_STA);
-  localIP.fromString(ip.c_str());
-  localGateway.fromString(gateway.c_str());
-
-  if (!WiFi.config(localIP, localGateway, subnet, dns)){
-    Serial.println("STA Falhou para configurar");
-    return false;
-  }
   WiFi.begin(ssid.c_str(), pass.c_str());
-  Serial.println("Conectando ao WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Conectando ao WiFi...");
+  }
+  ip = String(IpAddress2String(WiFi.localIP()));
+  Serial.println("Conectado ao WiFi");  
+  Serial.println(ip);
 
+  preferences.putString("ssid", ssid.c_str());
+  preferences.putString("pass", pass.c_str());
+  preferences.putString("ip", ip.c_str());
+  preferences.putString("gateway", gateway.c_str());
+ 
   unsigned long currentMillis = millis();
   previousMillis = currentMillis;
 
   while(WiFi.status() != WL_CONNECTED) {
     currentMillis = millis();
-    Serial.println("currentMillis: "+currentMillis);
-    Serial.println("previousMillis: "+previousMillis);
-    Serial.println("interval: "+interval);    
     if (currentMillis - previousMillis >= interval) {
       Serial.println("Falhou para conectar.");
       return false;
     }
-  }
+  }  
   Serial.println(WiFi.localIP());
   return true;
 }
 
 void setup() {
   Serial.begin(SERIAL_PORT);
-
+  
+  preferences.begin("store",false);
   // métricas para prometheus
   setupStorage();
   incrementBootCounter();
@@ -520,6 +513,7 @@ void setup() {
     Serial.println(IP);
     startWifiManagerServer();    
   }
+  preferences.end();
 }
 
 bool removeItemLista(String dataAgenda) {

@@ -26,9 +26,10 @@ void startWebServer() {
    *  de firmware OTA 
    */
   // Rotas das imagens a serem usadas na página home e o Health (não estão com basic auth)
-  handle_WaterLogo();
+  handle_RegadorLogo();
   handle_WaterList();
-  handle_WaterIco();
+  handle_RegadorIco();
+  handle_PrometheusSvg();
   handle_Style();
   handle_RegadorRobo();
   handle_Health();
@@ -44,7 +45,6 @@ void startWebServer() {
   handle_UpdateSensors();
   handle_InsertItemList();
   handle_DeleteItemList();
-  handle_UpdateFirmware();
   // ------------------------------------ //
   // se não se enquadrar em nenhuma das rotas
   handle_OnError();
@@ -55,8 +55,8 @@ void startWebServer() {
   // permitindo todas as origens. O ideal é trocar o '*' pela url do frontend poder utilizar a api com maior segurança
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Access-Control-Allow-Headers, Origin, Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers, Authorization");
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Credentials", "true");
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT");
-  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT,DELETE");
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", CALLER_ORIGIN);
 
   // startup web server
   server.begin();
@@ -86,9 +86,9 @@ void handle_OnError(){
   });
 }
 
-void handle_WaterLogo(){
-  server.on("/water-logo", HTTP_GET, [](AsyncWebServerRequest *request) {
-   request->send(LittleFS, "/water-logo.png", getContentType("/water-logo.png"));  
+void handle_RegadorLogo(){
+  server.on("/regador-logo", HTTP_GET, [](AsyncWebServerRequest *request) {
+   request->send(LittleFS, "/regador-logo.png", getContentType("/regador-logo.png"));  
   });
 }
 
@@ -98,11 +98,18 @@ void handle_WaterList(){
   });
 }
  
-void handle_WaterIco(){
-  server.on("/water-ico", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/water-ico.ico", getContentType("/water-ico.ico"));   
+void handle_RegadorIco(){
+  server.on("/regador-ico", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/regador-ico.ico", getContentType("/regador-ico.ico"));   
   });
 }
+
+void handle_PrometheusSvg(){
+  server.on("/prometheus-png", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/prometheus-png.png", getContentType("/prometheus-png.png"));   
+  });
+}
+
 
 void handle_Style(){
   server.on("/style", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -125,42 +132,45 @@ void handle_WifiManager(){
 
 void handle_WifiInfo(){
   server.on("/", HTTP_POST, [](AsyncWebServerRequest *request) {
+    preferences.begin("store",false);
     int params = request->params();
     for(int i=0;i<params;i++){
-      AsyncWebParameter* p = request->getParam(i);
+      const AsyncWebParameter* p = request->getParam(i);
       if(p->isPost()){
         // HTTP POST ssid value
-        if (p->name() == PARAM_INPUT_1) {
-          ssid = p->value().c_str();
+        if (p->name() == "ssid") {
+          String ssid = p->value().c_str();
           Serial.print("SSID set to: ");
           Serial.println(ssid);
-          preferences.putString(PARAM_INPUT_1, ssid.c_str());
+          preferences.putString("ssid", ssid.c_str());
         }
         // HTTP POST pass value
-        if (p->name() == PARAM_INPUT_2) {
-          pass = p->value().c_str();
+        if (p->name() == "pass") {
+          String pass = p->value().c_str();
           Serial.print("Password set to: ");
           Serial.println(pass);
-          preferences.putString(PARAM_INPUT_2, pass.c_str());
+          preferences.putString("pass", pass.c_str());
         }
         // HTTP POST ip value
-        if (p->name() == PARAM_INPUT_3) {
-          ip = p->value().c_str();
+        if (p->name() == "ip") {
+          String ip = p->value().c_str();
           Serial.print("IP Address set to: ");
           Serial.println(ip);
-          preferences.putString(PARAM_INPUT_3, ip.c_str());
+          preferences.putString("ip", ip.c_str());
         }
         // HTTP POST gateway value
-        if (p->name() == PARAM_INPUT_4) {
-          gateway = p->value().c_str();
+        if (p->name() == "gateway") {
+          String gateway = p->value().c_str();
           Serial.print("Gateway set to: ");
           Serial.println(gateway);
-          preferences.putString(PARAM_INPUT_4, gateway.c_str());
+          preferences.putString("gateway", gateway.c_str());
         }
         //Serial.printf("POST[%s]: %s\n", p->name().c_str(), p->value().c_str());
       }
     }
-    request->send(200, "text/plain", "Concluido. O ESP vai reiniciar, entao conecte-se em seu roteador e va para o endereco: http://" + String(HOST) + ".local");
+    preferences.end();
+    
+    request->send(HTTP_OK, "text/plain", "Concluido. O ESP vai reiniciar, entao conecte-se em seu roteador e va para o endereco: http://" + String(HOST) + ".local");    
     delay(3000);
     ESP.restart();
   });
@@ -444,18 +454,12 @@ void handle_DeleteItemList(){
   });
 }
 
-void handle_UpdateFirmware() {
-  server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", "ElegantOTA");
-  });
-}
-
 bool check_authorization_header(AsyncWebServerRequest * request){
   int headers = request->headers();
   int i;
   for(i=0;i<headers;i++){
-    AsyncWebHeader* h = request->getHeader(i);
-    //Serial.printf("_HEADER[%s]: %s\n", h->name().c_str(), h->value().c_str());
+    const AsyncWebHeader* h = request->getHeader(i);
+    Serial.printf("_HEADER[%s]: %s\n", h->name().c_str(), h->value().c_str());
     if(h->name()=="Authorization" && h->value()=="Basic "+String(API_WATER_TOKEN)){
       return true;
     }

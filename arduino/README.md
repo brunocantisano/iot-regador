@@ -173,7 +173,6 @@ sudo apt install python-is-python3
 
 ## Links utilizados no projeto 🔗
 
-- [Switch Button](https://fribly.com/2015/11/28/css-minion-switch-button/)
 - [React Charts](https://reactjsexample.com/a-react-environment-charts/)
 - [Github Emoticons](https://gist.github.com/rxaviers/7360908)
 - [API Rest - Antonio Mancuso](https://mancusoa74.blogspot.com/2018/02/simple-http-rest-server-on-esp8266.html)

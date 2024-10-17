@@ -22,13 +22,15 @@ jobs:
         - arduino/iot-regador
     env:
       ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL: true
-      API_WATER_TOKEN: ${{secrets.API_WATER_TOKEN}}
-      USER_FIRMWARE: ${{secrets.USER_FIRMWARE}}
-      PASS_FIRMWARE: ${{secrets.PASS_FIRMWARE}}
+      MQTT_BROKER: ${{secrets.MQTT_BROKER}}
+      MQTT_PORT: ${{secrets.MQTT_PORT}}
       AIO_USERNAME: ${{secrets.AIO_USERNAME}}
       AIO_KEY: ${{secrets.AIO_KEY}}
+      API_WATER_TOKEN: ${{secrets.API_WATER_TOKEN}}
       App_Packages_Archive: iot-regador
       Version: 1.0.${{ github.run_number }}
+      HOST: ${{secrets.HOST}}
+      CALLER_ORIGIN: ${{secrets.CALLER_ORIGIN}}
       Actions_Allow_Unsecure_Commands: true # Allows AddPAth and SetEnv commands
 
     steps:
@@ -79,18 +81,18 @@ jobs:
         arduino-cli lib install "Regexp"        
         arduino-cli config dump
 
-    - name: Change Firmware Username
+    - name: Change Broker host
       uses: jacobtomlinson/gha-find-replace@master
       with:
-        find: <USER_FIRMWARE>
-        replace: ${{ env.USER_FIRMWARE }}
+        find: <MQTT_BROKER>
+        replace: ${{ env.MQTT_BROKER }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
 
-    - name: Change Firmware Password
+    - name: Change Broker port Password
       uses: jacobtomlinson/gha-find-replace@master
       with:
-        find: <PASS_FIRMWARE>
-        replace: ${{ env.PASS_FIRMWARE }}
+        find: <MQTT_PORT>
+        replace: ${{ env.MQTT_PORT }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
 
     - name: Change Adafruit Username
@@ -120,11 +122,26 @@ jobs:
         find: <API_VERSION>
         replace: ${{ env.Version }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
-    
+
+    - name: Change API Host
+      uses: jacobtomlinson/gha-find-replace@master
+      with:
+        find: <HOST>
+        replace: ${{ env.HOST }}
+        include: "${{ env.App_Packages_Archive }}/Credentials.h"
+
+    - name: Change Caller Origin
+      uses: jacobtomlinson/gha-find-replace@master
+      with:
+        find: <CALLER_ORIGIN>
+        replace: ${{ env.CALLER_ORIGIN }}
+        include: "${{ env.App_Packages_Archive }}/Credentials.h"
+
     - name: Binários - ${{ matrix.iot-regador }} ${{ matrix.board }}
       run: |
         docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
-        mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin        
+        ls -ltr ${{ env.BUILD_OUT_DIR }}
+#        mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin        
 
     # Archive the package
     - name: Compress files

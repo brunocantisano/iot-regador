@@ -70,7 +70,6 @@ jobs:
         arduino-cli lib install "Adafruit SleepyDog Library"
         arduino-cli lib install "Adafruit Unified Sensor"
         arduino-cli lib install "ArduinoJson"
-        arduino-cli lib install "AsyncElegantOTA"
         arduino-cli lib install --git-url https://github.com/me-no-dev/ESPAsyncWebServer.git
         arduino-cli lib install --git-url https://github.com/me-no-dev/ESPAsyncTCP.git
         arduino-cli lib install "NTPClient"

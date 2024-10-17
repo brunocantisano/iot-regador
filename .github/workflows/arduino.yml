@@ -140,6 +140,7 @@ jobs:
     - name: Create LittleFS image
       run: |
         docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/build/${{ env.App_Packages_Archive }}-v${{ env.Version }}-fs.bin
+        ls -ltr
 
     - name: Compress files
       uses: montudor/action-zip@v1

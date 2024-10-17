@@ -137,43 +137,38 @@ jobs:
         replace: ${{ env.CALLER_ORIGIN }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
 
-    - name: Binários - ${{ matrix.iot-regador }} ${{ matrix.board }}
+    - name: Create LittleFS image
       run: |
-        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
+        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/build/${{ env.App_Packages_Archive }}-v${{ env.Version }}-fs.bin
 
-    # Archive the package
     - name: Compress files
       uses: montudor/action-zip@v1
       with:
-        args: zip -r ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip ${{ env.App_Packages_Directory }}
+        args: zip -r ${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip build/
 
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ env.App_Packages_Archive }}-v${{env.Version}}
-        path: ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip
+        name: ${{ env.App_Packages_Archive }}-v${{ env.Version }}
+        path: build/${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip
 
-
-    # Create the release:  https://github.com/actions/create-release
     - name: Create release
       id: create_release
       uses: actions/create-release@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: v${{ env.Version }}
         release_name: regador-esp8266-v${{ env.Version }}
         draft: false
         prerelease: false
 
-    # Upload release asset:   https://github.com/actions/upload-release-asset
-    - name: Update release asset
-      id: upload-release-asset
+    - name: Upload release asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}  # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-        asset_path: ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip
-        asset_name: ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: build/${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip
+        asset_name: ${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip
         asset_content_type: application/zip

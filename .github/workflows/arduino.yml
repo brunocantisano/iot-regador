@@ -128,22 +128,17 @@ jobs:
         mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin        
 
     # Archive the package
-    - name: Create archive
-      uses: coco-hkk/compress-action@v2.1
-      id: step1
+    - name: Compress files
+      uses: montudor/action-zip@v1
       with:
-        file-suffix: 'bin'
-        target-directory-path: ${{ env.BUILD_OUT_DIR }}
-        compress-tool: 'gzip'
+        args: zip -r ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip ${{ env.BUILD_OUT_DIR }}
 
-    - name: Get archive
-      run: |
-        if [ "0"x != "${{ steps.step1.outputs.state }}"x ]; then
-          echo "archive create failed, exit"
-        else
-          mv ${{ steps.step1.outputs.archive }} ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
-          tar -tzvf ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
-        fi
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ env.App_Packages_Archive }}-v${{env.Version}}
+        path: ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip
+
 
     # Create the release:  https://github.com/actions/create-release
     - name: Create release
@@ -165,6 +160,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}  # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-        asset_path: ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
-        asset_name: ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
-        asset_content_type: application/gzip
+        asset_path: ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip
+        asset_name: ${{ env.App_Packages_Archive }}-v${{env.Version}}.zip
+        asset_content_type: application/zip

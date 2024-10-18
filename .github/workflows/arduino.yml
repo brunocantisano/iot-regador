@@ -148,17 +148,7 @@ jobs:
       with:
         path: ${{ env.BUILD_OUT_DIR }}
         extensions: '.bin'
-        tools: 'brotli,gzip'    
-
-    - name: Get archive
-      run: |
-        ls -ltr
-#        if [ "0"x != "${{ steps.step1.outputs.state }}"x ]; then
-#          echo "archive create failed, exit"
-#        else
-#          mv ${{ steps.step1.outputs.archive }} ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
-#          tar -tzvf ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
-#        fi
+        tools: 'gzip'    
 
     # Create the release:  https://github.com/actions/create-release
     - name: Create release
@@ -167,8 +157,11 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
-        tag_name: v${{ env.Version }}
-        release_name: ${{ env.App_Packages_Archive }}-esp8266-v${{ env.Version }}
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        body: |
+          Changes in this Release
+          - Cheque o commit para verificar modificações
         draft: false
         prerelease: false
 

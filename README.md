@@ -1,6 +1,6 @@
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-[![build-arduino](https://github.com/brunocantisano/iot-regador/actions/workflows/arduino.yml/badge.svg?branch=master)](https://github.com/brunocantisano/iot-regador/actions/workflows/build.yml)
+[![Build Arduino](https://github.com/brunocantisano/iot-regador/actions/workflows/arduino.yml/badge.svg)](https://github.com/brunocantisano/iot-regador/actions/workflows/arduino.yml)
 
 ## Pré Requisitos
 

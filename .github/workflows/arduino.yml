@@ -140,11 +140,19 @@ jobs:
         find: <CALLER_ORIGIN>
         replace: ${{ env.CALLER_ORIGIN }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
-    
-    - name: Binários - ${{ matrix.iot-regador }} ${{ matrix.board }}
+
+    # Compilação do código .ino
+    - name: Compile .ino file
+      run: |
+        arduino-cli compile --fqbn esp8266:esp8266:esp8266 \
+          --build-path ./ \
+          --output-dir ${{ env.BUILD_OUT_DIR }} \
+          ${{ matrix.iot-regador }}/${{ env.App_Packages_Archive }}.ino
+
+      # Geração do sistema de arquivos LittleFS com Docker
+    - name: Generate LittleFS filesystem - ${{ matrix.iot-regador }} ${{ matrix.board }}
       run: |
         docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
-#        mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin
 
     # Archive the package
     - name: Create archive
@@ -164,8 +172,8 @@ jobs:
         tag_name: v${{ env.Version }}
         release_name: ${{ env.App_Packages_Archive }}-esp8266-v${{ env.Version }}
         body: |
-          Changes in this Release
-          - Cheque o commit para verificar modificações
+          Release for tag v${{ env.Version }}.
+          Commit Message: ${{ github.event.head_commit.message }}
         draft: false
         prerelease: false
 

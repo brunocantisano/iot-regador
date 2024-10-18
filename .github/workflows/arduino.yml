@@ -169,6 +169,10 @@ jobs:
         draft: false
         prerelease: false
 
+    - name: Get archive
+      run: |
+        ls -ltr
+
     # Upload release asset:   https://github.com/actions/upload-release-asset
     - name: Update release asset
       id: upload-release-asset

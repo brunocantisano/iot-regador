@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         board:
-        - esp8266:esp8266:huzzah
+        - esp8266:esp8266:generic
         iot-regador:
         - arduino/iot-regador
     env:
@@ -144,10 +144,10 @@ jobs:
     # Compilação do código .ino
     - name: Compile .ino file
       run: |
-        arduino-cli compile --fqbn esp8266:esp8266:generic \         
-          --build-path ${{ github.workspace }}/build \
-          --output-dir ${{ github.workspace }} \
-          ${{ matrix.iot-regador }}/iot-regador.ino
+        arduino-cli compile --fqbn ${{ matrix.board }} \         
+          --build-path /build \
+          --output-dir ./ \
+          ./arduino/iot-regador/iot-regador.ino
 
       # Geração do sistema de arquivos LittleFS com Docker
     - name: Generate LittleFS filesystem - ${{ matrix.iot-regador }} ${{ matrix.board }}

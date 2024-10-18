@@ -1,7 +1,7 @@
 name: Build Arduino
 on:
   workflow_dispatch:
-    branches: [ ESP8266 ]
+    branches: [ ESP32 ]
     inputs:
       name:
         # Friendly description to be shown in the UI instead of 'name'
@@ -17,9 +17,9 @@ jobs:
     strategy:
       matrix:
         board:
-        - esp8266:esp8266:huzzah
-        iot-regador:
-        - arduino/iot-regador
+        - esp32:esp32:esp32thing
+        iot-minion:
+        - arduino/iot-minion
     env:
       ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL: true
       MQTT_BROKER: ${{secrets.MQTT_BROKER}}
@@ -38,7 +38,49 @@ jobs:
       uses: actions/checkout@v2
       with:
         fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+
+    - name: Cache pip
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
    
+    - name: Cache Arduino CLI
+      uses: actions/cache@v2
+      with:
+        path: ~/.arduino15
+        key: ${{ runner.os }}-${{ hashFiles('*_index.json') }}
+      
+    - name: Setup Arduino CLI
+      uses: arduino/setup-arduino-cli@v1.1.1
+
+    - name: Install pyserial
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyserial       
+
+    - name: Install Arduino platforms and libraries
+      run: |
+        arduino-cli core update-index        
+        arduino-cli core update-index --additional-urls "https://arduino.esp8266.com/stable/package_esp8266com_index.json"
+        arduino-cli core install "esp8266:esp8266" --additional-urls "https://arduino.esp8266.com/stable/package_esp8266com_index.json" 
+        arduino-cli lib install "ArduinoWebsockets"
+        arduino-cli lib install "Adafruit FONA Library"
+        arduino-cli lib install "Adafruit MQTT Library"
+        arduino-cli lib install "Adafruit SleepyDog Library"
+        arduino-cli lib install "Adafruit Unified Sensor"
+        arduino-cli lib install "ArduinoJson"
+        arduino-cli lib install --git-url https://github.com/me-no-dev/ESPAsyncWebServer.git
+        arduino-cli lib install --git-url https://github.com/me-no-dev/ESPAsyncTCP.git
+        arduino-cli lib install "NTPClient"
+        arduino-cli lib install "PubSubClient"
+        arduino-cli lib install "LittleFS_esp32"
+        arduino-cli lib install "Preferences"
+        arduino-cli lib install "Adafruit Regexp"
+        arduino-cli config dump
+
     - name: Change Broker host
       uses: jacobtomlinson/gha-find-replace@master
       with:
@@ -94,69 +136,49 @@ jobs:
         find: <CALLER_ORIGIN>
         replace: ${{ env.CALLER_ORIGIN }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
-
-    # Run Arduino Compiler
-    # see https://github.com/arduino/compile-sketches
-    - name: Compile project
-      uses: arduino/compile-sketches@v1
-      with:
-        verbose: true
-        platforms: |
-          # Install ESP8266 platform via Boards Manager
-          - name: "esp8266:esp8266"
-            source-url: https://arduino.esp8266.com/stable/package_esp8266com_index.json
-            version: 3.1.0
-        fqbn: esp8266:esp8266:nodemcuv2
-        libraries: |
-          - source-path: ./
-          - name: ArduinoWebsockets
-          - name: Adafruit FONA Library
-          - name: Adafruit MQTT Library
-          - name: Adafruit SleepyDog Library
-          - name: Adafruit Unified Sensor
-          - name: ArduinoJson
-          - source-url: "https://github.com/me-no-dev/ESPAsyncWebServer.git"
-          - source-url: "https://github.com/me-no-dev/ESPAsyncTCP.git"
-          - name: NTPClient
-          - name: PubSubClient
-          - name: LittleFS_esp32
-          - name: Preferences          
-          - name: Adafruit Regexp
-        sketch-paths: |
-          - 'arduino/iot-regador'
-
-    - name: Create LittleFS image
+    
+    - name: Binários - ${{ matrix.iot-minion }} ${{ matrix.board }}
       run: |
-        ls -ltr
+        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-minion }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
+        mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin
 
-    - name: Compress files
-      uses: montudor/action-zip@v1
+    # Archive the package
+    - name: Create archive
+      uses: stefh/ghaction-CompressFiles@v2
       with:
-        args: zip -r ${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip build/
+        path: ${{ env.BUILD_OUT_DIR }}
+        extensions: '.bin'
+        tools: 'brotli,gzip'    
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: ${{ env.App_Packages_Archive }}-v${{ env.Version }}
-        path: build/${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip
+    - name: Get archive
+      run: |
+        if [ "0"x != "${{ steps.step1.outputs.state }}"x ]; then
+          echo "archive create failed, exit"
+        else
+          mv ${{ steps.step1.outputs.archive }} ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
+          tar -tzvf ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
+        fi
 
+    # Create the release:  https://github.com/actions/create-release
     - name: Create release
       id: create_release
       uses: actions/create-release@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
         tag_name: v${{ env.Version }}
-        release_name: regador-esp8266-v${{ env.Version }}
+        release_name: minion-esp32-v${{ env.Version }}
         draft: false
         prerelease: false
 
-    - name: Upload release asset
+    # Upload release asset:   https://github.com/actions/upload-release-asset
+    - name: Update release asset
+      id: upload-release-asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: build/${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip
-        asset_name: ${{ env.App_Packages_Archive }}-v${{ env.Version }}.zip
-        asset_content_type: application/zip
+        upload_url: ${{ steps.create_release.outputs.upload_url }}  # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+        asset_path: ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
+        asset_name: ${{ env.App_Packages_Archive }}-v${{env.Version}}.gz
+        asset_content_type: application/gzip

@@ -145,9 +145,9 @@ jobs:
     - name: Compile .ino file
       run: |
         arduino-cli compile --fqbn esp8266:esp8266:esp8266 \
-          --build-path ./ \
+          --build-path $(pwd)/${{ matrix.iot-regador }} \
           --output-dir ${{ env.BUILD_OUT_DIR }} \
-          $(pwd)/arduino/iot-regador/iot-regador.ino
+          iot-regador.ino
 
       # Geração do sistema de arquivos LittleFS com Docker
     - name: Generate LittleFS filesystem - ${{ matrix.iot-regador }} ${{ matrix.board }}

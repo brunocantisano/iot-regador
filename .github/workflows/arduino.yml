@@ -1,7 +1,7 @@
 name: Build Arduino
 on:
   workflow_dispatch:
-    branches: [ ESP32 ]
+    branches: [ master ]
     inputs:
       name:
         # Friendly description to be shown in the UI instead of 'name'
@@ -17,9 +17,9 @@ jobs:
     strategy:
       matrix:
         board:
-        - esp32:esp32:esp32thing
-        iot-minion:
-        - arduino/iot-minion
+        - esp8266:esp8266:huzzah
+        iot-regador:
+        - arduino/iot-regador
     env:
       ARDUINO_LIBRARY_ENABLE_UNSAFE_INSTALL: true
       MQTT_BROKER: ${{secrets.MQTT_BROKER}}
@@ -137,9 +137,9 @@ jobs:
         replace: ${{ env.CALLER_ORIGIN }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
     
-    - name: Binários - ${{ matrix.iot-minion }} ${{ matrix.board }}
+    - name: Binários - ${{ matrix.iot-regador }} ${{ matrix.board }}
       run: |
-        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-minion }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
+        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
         mv ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}.ino.bin ${{ env.BUILD_OUT_DIR }}/${{ env.App_Packages_Archive }}-v${{env.Version}}.bin
 
     # Archive the package
@@ -167,7 +167,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
         tag_name: v${{ env.Version }}
-        release_name: minion-esp32-v${{ env.Version }}
+        release_name: ${{ env.App_Packages_Archive }}-esp8266-v${{ env.Version }}
         draft: false
         prerelease: false
 

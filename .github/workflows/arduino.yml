@@ -141,15 +141,26 @@ jobs:
         replace: ${{ env.CALLER_ORIGIN }}
         include: "${{ env.App_Packages_Archive }}/Credentials.h"
 
-      # Geração do sistema de arquivos LittleFS com Docker
-    - name: Compile .ino file and Generate LittleFS filesystem - ${{ matrix.iot-regador }} ${{ matrix.board }}
+    # Geração do sistema de arquivos LittleFS com Docker
+    - name: Compile .ino file - ${{ matrix.iot-regador }} ${{ matrix.board }}
       run: |
         arduino-cli compile --fqbn ${{ matrix.board }} ./${{ matrix.iot-regador }} --output-dir $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-ino.bin
-        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
-        mv $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-ino.bin ${{ env.BUILD_OUT_DIR }}
 
     # Archive the package
-    - name: Create archive
+    - name: Create archive ino
+      uses: stefh/ghaction-CompressFiles@v2
+      with:
+        path: ${{ env.BUILD_OUT_DIR }}
+        extensions: '.bin'
+        tools: 'gzip'
+
+    # Geração do sistema de arquivos LittleFS com Docker
+    - name: Generate LittleFS filesystem - ${{ matrix.iot-regador }} ${{ matrix.board }}
+      run: |
+        docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
+
+    # Archive the package
+    - name: Create archive fs
       uses: stefh/ghaction-CompressFiles@v2
       with:
         path: ${{ env.BUILD_OUT_DIR }}
@@ -171,10 +182,6 @@ jobs:
         draft: false
         prerelease: false
 
-    - name: Get archive
-      run: |
-        ls -ltr
-
     # Upload release asset:   https://github.com/actions/upload-release-asset
     - name: Update release asset
       id: upload-release-asset
@@ -183,6 +190,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}  # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-        asset_path: ${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin.gz
-        asset_name: ${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin.gz
+        asset_path: ${{ env.App_Packages_Archive }}-v${{env.Version}}.bin.gz
+        asset_name: ${{ env.App_Packages_Archive }}-v${{env.Version}}.bin.gz
         asset_content_type: application/gzip

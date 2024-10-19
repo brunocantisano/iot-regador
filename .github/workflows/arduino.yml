@@ -144,12 +144,11 @@ jobs:
     # Compilação do código .ino
     - name: Compile .ino file
       run: |
-        cd ./arduino/iot-regador
+        arduino-cli compile --fqbn ${{ matrix.board }} \         
+        --build-path ./arduino/iot-regador \
+        --output-dir ./ \
+        iot-regador.ino
         ls -ltr
-#        arduino-cli compile --fqbn ${{ matrix.board }} \         
-#          --build-path /build \
-#          --output-dir ./ \
-#          ./arduino/iot-regador/iot-regador.ino
 
       # Geração do sistema de arquivos LittleFS com Docker
     - name: Generate LittleFS filesystem - ${{ matrix.iot-regador }} ${{ matrix.board }}

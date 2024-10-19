@@ -146,6 +146,7 @@ jobs:
       run: |
         arduino-cli compile --fqbn ${{ matrix.board }} ./${{ matrix.iot-regador }} --output-dir $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-ino.bin
         docker run -v $(pwd):$(pwd) -t arget888/mklittlefs:latest /mklittlefs/mklittlefs -b 4096 -p 256 -s 0x100000 -c $(pwd)/${{ matrix.iot-regador }}/data $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-fs.bin
+        mv $(pwd)/${{ env.App_Packages_Directory }}/${{ env.App_Packages_Archive }}-v${{env.Version}}-ino.bin ${{ env.BUILD_OUT_DIR }}
 
     # Archive the package
     - name: Create archive

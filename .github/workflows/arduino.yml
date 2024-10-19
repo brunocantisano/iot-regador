@@ -144,7 +144,7 @@ jobs:
     # Compilação do código .ino
     - name: Compile .ino file
       run: |
-        cd /arduino/iot-regador
+        cd ./arduino/iot-regador
         ls -ltr
 #        arduino-cli compile --fqbn ${{ matrix.board }} \         
 #          --build-path /build \

@@ -169,9 +169,7 @@ void handle_WifiInfo(){
       }
     }
     preferences.end();
-    
-    request->send(HTTP_OK, "text/plain", "Concluido. O ESP vai reiniciar, entao conecte-se em seu roteador e va para o endereco: http://" + String(HOST) + ".local");    
-    delay(3000);
+    request->send(HTTP_OK, "text/plain", "Concluido. O ESP vai reiniciar, entao conecte-se em seu roteador e va para o endereco: http://" + String(HOST) + ".local");      
     ESP.restart();
   });
 }

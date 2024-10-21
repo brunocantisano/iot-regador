@@ -370,7 +370,7 @@ void StatusCallback(void *cbData, int code, const char *string)
 }
 
 // Initialize WiFi
-bool initWiFi() {
+bool initWiFi() {  
   // Search for parameter in HTTP POST request
   //Variables to save values from HTML form
   String ssid = preferences.getString("ssid");
@@ -388,9 +388,8 @@ bool initWiFi() {
     return false;
   }
 
-  WiFi.begin(ssid.c_str(), pass.c_str());
+  WiFi.begin(ssid.c_str(), pass.c_str());  
   while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
     Serial.println("Conectando ao WiFi...");
   }
   ip = String(IpAddress2String(WiFi.localIP()));
@@ -470,8 +469,7 @@ void setup() {
         //http://regador.local (linux) e http://regador (windows)
         #ifdef DEBUG
           Serial.println("Erro ao configurar mDNS. O ESP32 vai reiniciar em 1s...");
-        #endif
-        delay(1000);
+        #endif        
         ESP.restart();        
     }
     // carrega dados
@@ -496,7 +494,6 @@ void setup() {
     {
         Serial.print(".");
         timeClient.forceUpdate();
-        delay(500);
     }
     Serial.println("Sincronizado com o servidor NTP");
      
@@ -608,7 +605,7 @@ void reconnect() {
       #ifdef DEBUG
         Serial.printf("Falhou com o estado %d\nNao foi possivel conectar com o broker mqtt.\nPor favor, verifique as credenciais e instale uma nova versão de firmware.\nTentando novamente em 5 segundos.", mqttClient.state());
       #endif
-      delay(5000);
+      Serial.println("Reconectando...");
     }
   }
 }
@@ -648,7 +645,7 @@ void DesligarBomba(){
   digitalWrite(RelayLight, LOW);
 }
 
-void loop(void) {
+void loop(void) {  
   if (!mqttClient.connected()) {
     // tento conectar no MQTT somente se já tiver rede
     if(WIFI_CONFIG) reconnect();
@@ -674,17 +671,14 @@ void loop(void) {
             nivelBaixo();
           } else {
             nivelAlto();
-            //espero por 1 minuto para molhar
-            delay(60000);
-          }
-          // removo da fila
-          if(removeItemLista(horaTemp)) {
-           Serial.println("Removido agendamento apos regar as plantas");
+            // removo da fila
+            if(removeItemLista(horaTemp)) {
+              Serial.println("Removido agendamento apos regar as plantas");
+            }
           }
       }
       timeSinceLastRead = 0;
     }
-    delay(100);
-    timeSinceLastRead += 100;  
+    timeSinceLastRead += 100;
   }
 }

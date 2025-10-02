@@ -1,664 +1,116 @@
-#include "Credentials.h"
-#include "Tipos.h"
-#include "ListaEncadeada.h"
-#include <ESP8266WiFi.h>
-#include <ESPAsyncTCP.h>
-#include <ESPAsyncWebServer.h>
-#include <WiFiClientSecure.h>
-#include <ESP8266mDNS.h>
-#include <ArduinoJson.h>
-#include <PubSubClient.h>
-#include <Preferences.h>
-#include <LittleFS.h>
-#include <NTPClient.h>
-#include <WiFiUdp.h>
-#include <Regexp.h>
+// ====== SEUS HEADERS ======
+#include "WebServerHandler.h"
+#include <ArduinoUtilsCds.h>
 
 const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 
+// ====== CONFIG BÁSICA ======
 #define DEBUG
 #define SERIAL_PORT                115200
-//Rest API
-#define HTTP_REST_PORT             80
 
-#define DEFAULT_VOLUME             70
-/* ports */
-#define D0                         16
-#define D1                         5
-#define D2                         4
-#define D3                         0
-#define D4                         2
-#define D5                         14
-#define D6                         12
-#define D7                         13
-#define D8                         15
-#define D9                         16
-
-#define RelayWater                 D8
-#define RelayLight                 D7
-#define RelayLevel                 D6
-
-#define MAX_STRING_LENGTH          2000
-#define MAX_PATH                   256
-#define MAX_FLOAT                  5
-
-/* 200 OK */
-#define HTTP_OK                    200
-/* 204 No Content */
-#define HTTP_NO_CONTENT            204
-/* 400 Bad Request */
-#define HTTP_BAD_REQUEST           400
-#define HTTP_UNAUTHORIZED          401
-#define HTTP_INTERNAL_SERVER_ERROR 500
-#define HTTP_NOT_FOUND             404
-#define HTTP_CONFLICT              409
-
-Preferences preferences;
-
-int timeSinceLastRead = 0;
 //---------------------------------//
 
-/* versão do firmware */
-const char version[] PROGMEM = API_VERSION;
-
-// Lista de sensores
-ListaEncadeada<ArduinoSensorPort*> sensorListaEncadeada = ListaEncadeada<ArduinoSensorPort*>();
-
-// Lista de aplicacoes do jenkins
-ListaEncadeada<Agenda*> agendaListaEncadeada = ListaEncadeada<Agenda*>();
-
-// Create an ESP8266 WiFiClient class to connect to the MQTT server.
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
-
-AsyncWebServer server(HTTP_REST_PORT);               // initialise webserver
-
-//Variables to save values from HTML form
-String ssid;
-String pass;
-String ip;
-String gateway;
-
-IPAddress localIP;
-//IPAddress localIP(192, 168, 1, 200); // hardcoded
-// Set your Gateway IP address
-IPAddress localGateway;
-//IPAddress localGateway(192, 168, 1, 1); //hardcoded
-IPAddress subnet(255, 255, 255, 0);
-IPAddress dns(1, 1, 1, 1);               // CloudFlare DNS server
-
-// Timer variables
-unsigned long previousMillis = 0;
-const long interval = 10000;  // interval to wait for Wi-Fi connection (milliseconds)
-bool WIFI_CONFIG = false;
-
-//Fuso Horário
-int timeZone = -3;
-
-// Define NTP Client to get time
-WiFiUDP ntpUDP;
-NTPClient timeClient(
-                      ntpUDP,                 //socket udp
-                      "0.br.pool.ntp.org");
-
-String getContent(const char* filename) {
-  String payload="";  
-  bool exists = LittleFS.exists(filename);
-  if(exists){
-    File file = LittleFS.open(filename, "r"); 
-    String mensagem = "Falhou para abrir para leitura";
-    if(!file){    
-      #ifdef DEBUG
-        Serial.println(mensagem);
-      #endif
-      return mensagem;
-    }
-    while (file.available()) {
-      payload += file.readString();
-    }
-    file.close();
-  } else {
-    Serial.println(LITTLEFS_ERROR);
-  }  
-  return payload;
-}
-
-String getContentType(String filename) { // convert the file extension to the MIME type
-  if (filename.endsWith(".html")) return "text/html";
-  else if (filename.endsWith(".css")) return "text/css";
-  else if (filename.endsWith(".js")) return "application/javascript";
-  else if (filename.endsWith(".ico")) return "image/x-icon";
-  else if (filename.endsWith(".png")) return "image/png";
-  else if (filename.endsWith(".jpg")) return "image/jpg";
-  else if (filename.endsWith(".json")) return "application/json";
-  return "text/plain";
-}
-
-bool writeContent(String filename, String content){
-  File file = LittleFS.open(filename, "w");
-  return writeContent(&file, content);
-}
-
-bool writeContent(File * file, String content){
-  if (!file) {    
-    #ifdef DEBUG
-      Serial.println(F("Falhou para abrir para escrita"));
-    #endif
-    return false;
-  }
-  if (file->print(content)) {    
-    #ifdef DEBUG
-      Serial.println(F("Arquivo foi escrito"));
-    #endif
-  } else {    
-    #ifdef DEBUG
-      Serial.println(F("Falha ao escrever arquivo"));
-    #endif
-  }
-  file->close();
-  return true; 
-}
-
-// Make size of files human readable
-// source: https://github.com/CelliesProjects/minimalUploadAuthESP32
-String humanReadableSize(const size_t bytes) {
-  if (bytes < 1024) return String(bytes) + " B";
-  else if (bytes < (1024 * 1024)) return String(bytes / 1024.0) + " KB";
-  else if (bytes < (1024 * 1024 * 1024)) return String(bytes / 1024.0 / 1024.0) + " MB";
-  else return String(bytes / 1024.0 / 1024.0 / 1024.0) + " GB";
-}
-
-String getDataHora() {
-    time_t nowSecs = millis()/1000;
-    struct tm timeinfo;
-    char time_converted[80];
-    gmtime_r(&nowSecs, &timeinfo);
-    // HH:MM:SS
-    strftime (time_converted,80,"%H:%M:%S",&timeinfo);    
-    return String(time_converted);
-}
-
-time_t getHoraAgora() {
-    struct tm myTime;
-       
-    time_t epochTime = timeClient.getEpochTime();  
-    String formattedTime = timeClient.getFormattedTime(); 
-    int currentHour = timeClient.getHours(); 
-    int currentMinute = timeClient.getMinutes();    
-    int currentSecond = timeClient.getSeconds();
-    //Get a time structure
-    struct tm *ptm = gmtime ((time_t *)&epochTime);   
-    int monthDay = ptm->tm_mday; 
-    int currentMonth = ptm->tm_mon;
-    int currentYear = ptm->tm_year;
-    myTime.tm_sec = currentSecond;       // seconds after the minute [0-60]
-    myTime.tm_min = currentMinute;      // minutes after the hour [0-59]
-    myTime.tm_hour = currentHour;     // hours since midnight [0-23]
-    myTime.tm_mday = monthDay;     // day of the month [1-31]
-    myTime.tm_mon = currentMonth;       // months since January [0-11]
-    myTime.tm_year = currentYear;    // years since 1900
-    myTime.tm_isdst = -1;    // daylight saving time flag (-1 for unknown)
-    time_t myTime_t = mktime(&myTime);
-
-    return myTime_t;
-}
-
-int searchList(String dataAgenda) {
-  Agenda *agd;
-  for(int i = 0; i < agendaListaEncadeada.size(); i++){
-    // Obtem a aplicação da lista
-    agd = agendaListaEncadeada.get(i);
-    if (dataAgenda==agd->dataAgenda) {
-      return i;
-    }
-  }  
-  return -1;
-}
-
-String getData(uint8_t *data, size_t len) {
-  char raw[len];
-  for (size_t i = 0; i < len; i++) {
-    //Serial.write(data[i]);
-    raw[i] = data[i];
-  }
-  raw[len]=0x00;
-  return String(raw);
-}
-
-String IpAddress2String(const IPAddress& ipAddress)
-{
-    return (String(ipAddress[0]) + String(".") +
-           String(ipAddress[1]) + String(".") +
-           String(ipAddress[2]) + String(".") +
-           String(ipAddress[3]));
-}
-
-void setClock() {
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-}
-
-bool addSensor(byte id, byte gpio, byte status, const char* name) {
-  ArduinoSensorPort *arduinoSensorPort = new ArduinoSensorPort(); 
-  arduinoSensorPort->id = id;
-  arduinoSensorPort->gpio = gpio;
-  arduinoSensorPort->status = status;
-  arduinoSensorPort->name = name;
-  pinMode(gpio, OUTPUT);
-
-  // Adiciona sensor na lista
-  sensorListaEncadeada.add(arduinoSensorPort);
-  return true;
-}
-
-bool loadSensorList()
-{
-  bool ret = false;
-  ret=addSensor(1, RelayWater, LOW, "water");
-  if(!ret) return false;
-  ret=addSensor(2, RelayLight, LOW, "light");
-  if(!ret) return false;
-  ret=addSensor(3, RelayLevel, LOW, "level");
-  if(!ret) return false;  
-  return true;
-}
-
-bool readBodySensorData(byte status, byte gpio) {
-  #ifdef DEBUG
-    Serial.println(status);
-  #endif
-  ArduinoSensorPort * arduinoSensorPort = searchListSensor(gpio);
-  if(arduinoSensorPort!=NULL) {    
-    arduinoSensorPort->status = status;
-    return true;
-  }
-  return false;
-}
-
-ArduinoSensorPort * searchListSensor(byte gpio) {
-  ArduinoSensorPort *arduinoSensorPort;
-  for(int i = 0; i < sensorListaEncadeada.size(); i++){
-    // Obtem a aplicação da lista
-    arduinoSensorPort = sensorListaEncadeada.get(i);
-    if (gpio == arduinoSensorPort->gpio) {
-      return arduinoSensorPort;
-    }
-  }
-  return NULL;
-}
-
-String readSensor(byte gpio){
-  String data="";
-  ArduinoSensorPort *arduinoSensorPort = searchListSensor(gpio);  
-  if(arduinoSensorPort != NULL) {
-    arduinoSensorPort->status=digitalRead(gpio);
-    data="{\"id\":\""+String(arduinoSensorPort->id)+"\",\"name\":\""+String(arduinoSensorPort->name)+"\",\"gpio\":\""+String(arduinoSensorPort->gpio)+"\",\"status\":\""+String(arduinoSensorPort->status)+"\"}";
-  }
-  return data;
-}
-
-String readSensorStatus(byte gpio){
-  return String(digitalRead(gpio));
-}
-
-bool validaHora(String hora) {
-  char buf[MAX_PATH];
-  memset(buf, 0x00, MAX_PATH);
-  strcpy(buf, hora.c_str());
-  MatchState ms;
-  ms.Target (buf);
-  unsigned int count = ms.MatchCount ("[0-9][0-9]:[0-9][0-9]");
-  Serial.println("count="+String(count));
-  if(count == 1) return true;
-  return false;
-}
-
-void addAgenda(String dataAgenda) {
-  int ind = dataAgenda.indexOf(':');
-  String hora = dataAgenda.substring(0, ind);
-  String minutos = dataAgenda.substring(ind+1, dataAgenda.length());  
-  Agenda *agdnew = new Agenda();  
-  agdnew->dataAgenda = dataAgenda;
-  agendaListaEncadeada.add(agdnew);
-}
-
-void saveAgendaList() {
-  Agenda *agd;
-  String JSONmessage;
-  for(int i = 0; i < agendaListaEncadeada.size(); i++){
-    // Obtem a aplicação da lista
-    agd = agendaListaEncadeada.get(i);
-    JSONmessage += "{\"dataAgenda\": \""+agd->dataAgenda+"\"}"+",";
-  }
-  JSONmessage = "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]";
-  // Grava no storage
-  writeContent("/lista.json",JSONmessage); 
-  // Grava no adafruit
-  Publish("list", JSONmessage.c_str());
-}
-
-int loadAgendaList() {
-  // Carrega do storage
-  String JSONmessage = getContent("/lista.json");
-  if(JSONmessage == "") {    
-    #ifdef DEBUG
-      Serial.println(F("Lista local de eventos vazia"));
-    #endif
-    return -1;
-  } else {
-    DynamicJsonDocument doc(MAX_STRING_LENGTH);
-    DeserializationError error = deserializeJson(doc, JSONmessage);
-    if (error) {
-      return 1;
-    }
-    for(int i = 0; i < doc.size(); i++){
-      addAgenda(doc[i]["dataAgenda"]);
-    }    
-  }
-  return 0;
-}
-
-// Called when there's a warning or error (like a buffer underflow or decode hiccup)
-void StatusCallback(void *cbData, int code, const char *string)
-{
-  const char *ptr = reinterpret_cast<const char *>(cbData);
-  // Note that the string may be in PROGMEM, so copy it to RAM for printf
-  char s1[64];
-  strncpy_P(s1, string, sizeof(s1));
-  s1[sizeof(s1)-1]=0;
-  Serial.printf("STATUS(%s) '%d' = '%s'\n", ptr, code, s1);
-  Serial.flush();
-}
-
-// Initialize WiFi
-bool initWiFi() {  
-  // Search for parameter in HTTP POST request
-  //Variables to save values from HTML form
-  String ssid = preferences.getString("ssid");
-  String pass = preferences.getString("pass");
-  String ip = preferences.getString("ip");
-  String gateway = preferences.getString("gateway");
-
-  Serial.println(ssid);
-  Serial.println(pass);
-  Serial.println(ip);
-  Serial.println(gateway);
-  
-  if(ssid=="" || ip==""){
-    Serial.println("SSID ou endereço IP indefinido.");
-    return false;
-  }
-
-  WiFi.begin(ssid.c_str(), pass.c_str());  
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Conectando ao WiFi...");
-  }
-  ip = String(IpAddress2String(WiFi.localIP()));
-  Serial.println("Conectado ao WiFi");  
-  Serial.println(ip);
-
-  preferences.putString("ssid", ssid.c_str());
-  preferences.putString("pass", pass.c_str());
-  preferences.putString("ip", ip.c_str());
-  preferences.putString("gateway", gateway.c_str());
- 
-  unsigned long currentMillis = millis();
-  previousMillis = currentMillis;
-
-  while(WiFi.status() != WL_CONNECTED) {
-    currentMillis = millis();
-    if (currentMillis - previousMillis >= interval) {
-      Serial.println("Falhou para conectar.");
-      return false;
-    }
-  }  
-  Serial.println(WiFi.localIP());
-  return true;
-}
+// ====== Objetos do seu projeto ======
+ArduinoUtilsCds utilscds;
+AsyncWebServer server(HTTP_REST_PORT);
+WebServerHandler * websrvhdl = nullptr;
+Credentials creds;
+String decrypted_userFirmware;
+String decrypted_passFirmware;
+String decrypted_userMqtt;
+String decrypted_passMqtt;
+String decrypted_apiToken;
+bool isWiFiConnected = false;
+//---------------------------------//
+/**********************************************
+ *  SETUP
+ **********************************************/
 
 void setup() {
   Serial.begin(SERIAL_PORT);
-  
-  preferences.begin("store",false);
-  // métricas para prometheus
-  setupStorage();
-  incrementBootCounter();
-  //
-  
-  #ifdef DEBUG
-    Serial.println(F("modo debug"));
-  #else
-    Serial.println(F("modo produção"));
-  #endif
-  
-  if(!LittleFS.begin()){
-    #ifdef DEBUG
-      Serial.println(LITTLEFS_ERROR);
-    #endif      
-  }
+  Serial.println("\nBoot...");
 
-  // carrega sensores
-  bool load = loadSensorList();
-  if(!load) {
-    #ifdef DEBUG
-      Serial.println(F("Nao foi possivel carregar a lista de sensores!"));
-    #endif
-  }
-  
-   if(initWiFi()) {    
-    #ifdef DEBUG
-      Serial.println("\n\nNetwork Configuration:");
-      Serial.println("----------------------");
-      Serial.print("         SSID: "); Serial.println(WiFi.SSID());
-      Serial.print("  Wifi Status: "); Serial.println(WiFi.status());
-      Serial.print("Wifi Strength: "); Serial.print(WiFi.RSSI()); Serial.println(" dBm");
-      Serial.print("          MAC: "); Serial.println(WiFi.macAddress());
-      Serial.print("           IP: "); Serial.println(WiFi.localIP());
-      Serial.print("       Subnet: "); Serial.println(WiFi.subnetMask());
-      Serial.print("      Gateway: "); Serial.println(WiFi.gatewayIP());
-      Serial.print("        DNS 1: "); Serial.println(WiFi.dnsIP(0));
-      Serial.print("        DNS 2: "); Serial.println(WiFi.dnsIP(1));
-      Serial.print("        DNS 3: "); Serial.println(WiFi.dnsIP(2));   
-    #endif
-    startWebServer();
+  utilscds.iniciaStorage();
+  utilscds.exibeMensagem("Inicializando o storage");
+  // === Carrega credenciais de firmware/host etc. (credentials.txt) === 
+  static const char* required[] = {
+    "MQTT_BROKER", "MQTT_USERNAME", "MQTT_USERNAME_LENGTH", "MQTT_PASSORD", "MQTT_PASSORD_LENGTH", "MQTT_PORT",
+    "USER_FIRMWARE", "USER_FIRMWARE_LENGTH", "PASS_FIRMWARE", "PASS_FIRMWARE_LENGTH",
+    "HOST", "API_TOKEN", "API_TOKEN_LENGTH", "API_VERSION", "CALLER_ORIGIN"
+  };
+  const size_t requiredSize = sizeof(required) / sizeof(required[0]);
+  creds = utilscds.quebraValidaCredenciais(required, requiredSize);
+  if (creds.valid) {
+    decrypted_userMqtt = utilscds.decrypta(creds.mqttUsername, creds.mqttUsernameLength);
+    decrypted_passMqtt = utilscds.decrypta(creds.mqttPassord, creds.mqttPassordLength);
+    decrypted_userFirmware = utilscds.decrypta(creds.userFirmware, creds.userFirmwareLength);
+    decrypted_passFirmware = utilscds.decrypta(creds.passFirmware, creds.passFirmwareLength);
+    decrypted_apiToken     = utilscds.decrypta(creds.apiToken, creds.apiTokenLength);
 
-    /* Usa MDNS para resolver o DNS */
-    Serial.println("mDNS configurado e inicializado;");
-    setClock();
-    if (!MDNS.begin(HOST)) 
-    { 
-        //http://regador.local (linux) e http://regador (windows)
-        #ifdef DEBUG
-          Serial.println("Erro ao configurar mDNS. O ESP32 vai reiniciar em 1s...");
-        #endif        
-        ESP.restart();        
-    }
-    // carrega dados
-    loadAgendaList();
+    Serial.println("decrypted_userMqtt: "+decrypted_userMqtt);
+    Serial.println("decrypted_passMqtt: "+decrypted_passMqtt);
+    Serial.println("decrypted_userFirmware: "+decrypted_userFirmware);
+    Serial.println("decrypted_passFirmware: "+decrypted_passFirmware);
+    Serial.println("decrypted_apiToken: "+decrypted_apiToken);
 
-    //connecting to a mqtt broker
-    mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-    mqttClient.setCallback(callback);
-            
-    // Initialize a NTPClient to get time
-    timeClient.begin();
-    // Set offset time in seconds to adjust for your timezone, for example:
-    // GMT +1 = 3600
-    // GMT +8 = 28800
-    // GMT -1 = -3600
-    // GMT 0 = 0
-    timeClient.setTimeOffset(timeZone*(3600));
-  
-    //Espera pelo primeiro update online
-    Serial.println("Esperando para sincronizar com o NTP");
-    while(!timeClient.update())
-    {
-        Serial.print(".");
-        timeClient.forceUpdate();
-    }
-    Serial.println("Sincronizado com o servidor NTP");
-     
-    WIFI_CONFIG = true;
-    Serial.println("Regador esta funcionando!");
-  }
-  else {
-    // Conecta a rede Wi-Fi com SSID e senha
-    Serial.println("Atribuindo Ponto de Acesso");
-    // NULL sets an open Access Point
-    WiFi.softAP("ESP-WIFI-MANAGER", NULL);
-    IPAddress IP = WiFi.softAPIP();
-    Serial.print("Endereço IP do ponto de acesso: ");
-    Serial.println(IP);
-    startWifiManagerServer();    
-  }
-  preferences.end();
-}
+    const String hostName = creds.host.isEmpty() ? String("device") : creds.host;
 
-bool removeItemLista(String dataAgenda) {
-  //busco pela aplicacao a ser removida
-  int index = searchList(dataAgenda);
-  if(index != -1) {
-    //removo
-    agendaListaEncadeada.remove(index);
-    return true;
-  }
-  return false;
-}
+    // === Servidor principal e OTA (só quando conectado) ===
+    websrvhdl = new WebServerHandler(
+      decrypted_apiToken.c_str(), 
+      creds.apiVersion, 
+      hostName, 
+      decrypted_userMqtt,
+      decrypted_passMqtt,
+      creds.mqttBroker,
+      creds.callerOrigin
+    );
 
-void callback(char *topic, byte *payload, unsigned int length) {
-  byte gpio;
-  String message;
-  
-  #ifdef DEBUG
-    Serial.print(F("Mensagem que chegou no tópico: "));
-    Serial.println(topic);
-    Serial.print(F("Mensagem:"));
-  #endif
-          
-  for (int i = 0; i < length; i++) {
-     message+=(char) payload[i];
-  }
-  #ifdef DEBUG
-    Serial.println(message);
-  #endif
-
-  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/water")).c_str()) {
-    digitalWrite(RelayWater, message=="ON"?1:0);
-  }
-  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/light")).c_str()) {
-    digitalWrite(RelayLight, message=="ON"?1:0);
-  }
-  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/level")).c_str()) {
-    digitalWrite(RelayLevel, message=="ON"?1:0);
-  }
-  if(String(topic) == (String(MQTT_USERNAME)+String("/feeds/list")).c_str()) {
-    DynamicJsonDocument doc(MAX_STRING_LENGTH);
-    // ler do feed list no adafruit
-    if(message == "") {    
-      #ifdef DEBUG
-        Serial.println(F("Lista de agendamentos vazia"));
-      #endif
-      // carrega lista a partir do storage
-      loadAgendaList();
-      /*
-      if(loadAgendaList()>=0) {
-        //saveAgendaList();
-      }
-      */
+    // === Wi-Fi: tenta STA; se falhar, abre portal ===
+    isWiFiConnected = websrvhdl->connectSTA(hostName);
+    if (!isWiFiConnected) {
+      String apName = hostName.isEmpty() ? String("device-setup") : (hostName + "-setup");
+      websrvhdl->startWebServerWifiManager(apName);
+      Serial.println("WiFi não configurado!");
+      Serial.println("Por favor, conecte-se em: " + apName + " e entre em: http://" + hostName + ".local para configuração do WiFi.");
     } else {
-      DeserializationError error = deserializeJson(doc, message);
-      if (error) {
-        #ifdef DEBUG
-          Serial.println(F("Erro ao fazer o parser da lista vindo do Adafruit"));
-        #endif
+      utilscds.salvaCredenciaisWiFi(WiFi.SSID().c_str(), WiFi.psk().c_str());
+      websrvhdl->startWebServer();   // registra rotas no 'server' e chama server->begin() lá dentro
+      utilscds.logInfo("Web Server inicializado");
+      utilscds.iniciaOta(&server, decrypted_userFirmware, decrypted_passFirmware);
+      utilscds.logInfo("OTA inicializado");
+
+      const char * hostname = hostName.c_str();
+      MDNS.end();
+      // Atribuindo clock para conseguir usar datetime nos arquivos de log
+      utilscds.atribuiRelogio();
+      if(!MDNS.begin(hostname)){
+        Serial.println("mDNS falhou");
+        delay(1000);
+        delete websrvhdl;
+        ESP.restart();
       }
-      /*
-      for(int i = 0; i < doc.size(); i++){
-        addAgenda(doc[i]["dataAgenda"]);
-      }
-      */
+      MDNS.addService("http", "tcp", 80);
+      Serial.print(F("mDNS ok: http://"));
+      Serial.print(hostname);     // hostname = const char* ou String
+      Serial.println(F(".local"));
     }
-  }
-  #ifdef DEBUG
-    Serial.println(F("-----------------------"));
-  #endif
-}
-
-void Subscribe(String topic) {
-  // Subscribe
-  mqttClient.subscribe((String(MQTT_USERNAME)+String("/feeds/"+topic)).c_str());
-}
-
-void reconnect() {
-  // Loop até que esteja reconectado
-  while (!mqttClient.connected()) {
-    Serial.println("Tentando conexão com o servidor MQTT...");
-    String client_id = String(HOST)+".local-"+String(WiFi.macAddress());
-    #ifdef DEBUG
-      Serial.printf("O cliente %s conecta ao mqtt broker publico\n", client_id.c_str());
-    #endif      
-    if (mqttClient.connect(client_id.c_str(), MQTT_USERNAME, MQTT_PASSWORD)) {
-      Serial.println(F("Adafruit mqtt broker conectado"));
-      Subscribe("water");      
-      Subscribe("level");
-      Subscribe("list");
-    } else {
-      #ifdef DEBUG
-        Serial.printf("Falhou com o estado %d\nNao foi possivel conectar com o broker mqtt.\nPor favor, verifique as credenciais e instale uma nova versão de firmware.\nTentando novamente em 5 segundos.", mqttClient.state());
-      #endif
-      Serial.println("Reconectando...");
-    }
+  } else {
+    Serial.println("Credenciais inválidas em /credentials.txt");
   }
 }
 
-void Publish(String topic, String status) {
-  mqttClient.publish((String(MQTT_USERNAME)+String("/feeds/"+topic)).c_str(), status.c_str());
-}
-
-void nivelBaixo() {
-  // se a bomba estiver ligada
-  DesligarBomba();
-}
-
-void nivelAlto() { 
-  // ligo a bomba
-  LigarBomba();
-}
-
-void LigarBomba(){
-  Serial.println("Ligo a bomba");
-  digitalWrite(RelayWater, HIGH);
-  Publish("water", "ON");
-  
-  // acendo a luz
-  Serial.println("Acendo a luz");
-  digitalWrite(RelayLight, HIGH);  
-}
- 
-void DesligarBomba(){
-  // desligo a bomba
-  Serial.println("Desligo a bomba");
-  digitalWrite(RelayWater, LOW);
-  Publish("water", "OFF");
-
-  //apago a luz
-  Serial.println("Apago a luz");
-  digitalWrite(RelayLight, LOW);
-}
-
-void loop(void) {  
-  if (!mqttClient.connected()) {
-    // tento conectar no MQTT somente se já tiver rede
-    if(WIFI_CONFIG) reconnect();
-  }
-  mqttClient.loop();
-  
-  if(WIFI_CONFIG) {
+/**********************************************
+ *  LOOP
+ **********************************************/
+void loop() {
+  if (isWiFiConnected) {
     MDNS.update();
-        
+    utilscds.loopOta();    // se o seu OtaHandler exigir
+/*
     // Report every 1 minuto.
     if(timeSinceLastRead > 1000) {
-      time_t horaAtual = getHoraAgora();
-  
+      time_t horaAtual = getHoraAgora();  
       struct tm timeinfo;
       char horaTemp[80];
       gmtime_r(&horaAtual, &timeinfo);
@@ -680,5 +132,6 @@ void loop(void) {
       timeSinceLastRead = 0;
     }
     timeSinceLastRead += 100;
+*/  
   }
 }

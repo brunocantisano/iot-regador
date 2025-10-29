@@ -35,17 +35,19 @@
 #include "PreferencesHandler.h"
 #include "HttpStatusCodes.h"
 
+#include <ArduinoUtilsCds.h>
+
 #define HTTP_REST_PORT             80
 #define MAX_PAYLOAD_SIZE           2000
+
+#define RelayWater                 D8
+#define RelayLight                 D7
+#define RelayLevel                 D6
 
 class WebServerHandler {
 private:
     AsyncWebServer * server;
     AsyncWebSocket * ws;      // rota do websocket
-    StorageHandler * strhdl;
-    UtilsHandler * utilshdl;
-    MqttHandler * mqtthdl;
-    PreferencesHandler * prefshdl;
     // Lista de sensores
     ListaEncadeada<ArduinoSensorPort*> sensorListaEncadeada = ListaEncadeada<ArduinoSensorPort*>();
     // Lista de aplicacoes do jenkins
@@ -55,12 +57,10 @@ private:
     String apiToken;
     String apiVersion;
     String host;
-    String mqttUser;
-    String mqttPass;
-    String mqttBroker;
+    ArduinoUtilsCds * utilscds;
+    String callerOrigin;
     String savedSsid;
     String savedPass;
-    String callerOrigin;
     String obtemEstadoSensor(int sensor);
     String obtemMetricas();
     void atribuiMetrica(String *p, String metric, String value);
@@ -91,11 +91,9 @@ public:
         const String& token, 
         const String& version, 
         const String& hostServer, 
-        const String& mqttUsername,
-        const String& mqttPassword,
-        const String& mqttBrokerHost,
-        const String& caller);
-    
+        const String& caller,
+        ArduinoUtilsCds * cds);
+        
     ~WebServerHandler();
 
     void startWebServer(void);

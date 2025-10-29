@@ -1,5 +1,7 @@
 // WebServerHandler.cpp
 #include "WebServerHandler.h"
+#include <FS.h>
+#include <LittleFS.h>
 
 static const char* MSG_ARQUIVO_NAO_ENCONTRADO = "Provavelmente voce nao carregou os arquivos da pasta \"data\" (LittleFS) para o servidor!";
 // Ajuste aqui conforme sua fiação:
@@ -16,33 +18,22 @@ WebServerHandler::WebServerHandler(
     const String& token, 
     const String& version, 
     const String& hostServer, 
-    const String& mqttUsername,
-    const String& mqttPassword,
-    const String& mqttBrokerHost,
-    const String& caller): 
+    const String& caller,
+    ArduinoUtilsCds * cds): 
                       apiToken(token),
                       apiVersion(version),
                       host(hostServer),
-                      mqttUser(mqttUsername),
-                      mqttPass(mqttPassword),
-                      mqttBroker(mqttBrokerHost),
-                      callerOrigin(caller)
+                      callerOrigin(caller),
+                      utilscds(cds)
 {
   server = new AsyncWebServer(HTTP_REST_PORT);
   ws = new AsyncWebSocket("/ws");
-  strhdl = new StorageHandler();
-  utilshdl = new UtilsHandler();
-  prefshdl = new PreferencesHandler();
-
-  strhdl->begin();
 }
 
 WebServerHandler::~WebServerHandler() {
     delete server;  // Free the allocated memory
     delete ws;
-    delete strhdl;
-    delete utilshdl;
-    delete prefshdl;
+    delete utilscds;
 }
 
 String WebServerHandler::obtemMetricas() {
@@ -94,7 +85,7 @@ void WebServerHandler::atribuiMetrica(String *p, String metric, String value) {
 }
 
 int WebServerHandler::obtemContagemBoots() {
-  String boot = prefshdl->loadDataPreferentials("storage", "boot", "0");
+  String boot = utilscds->carregaDado("storage", "boot", "0");
   return boot.toInt();
 }
 
@@ -103,7 +94,7 @@ void WebServerHandler::incrementaContagemBoots() {
   char buffer[10];
   sprintf(buffer, "%d", boot);
   const char* texto = buffer;
-  prefshdl->saveDataPreferentials("storage", "boot", texto);
+  utilscds->salvaDado("storage", "boot", texto);
 }
 
 bool WebServerHandler::check_authorization_header(AsyncWebServerRequest * request){
@@ -127,64 +118,69 @@ void WebServerHandler::handleFileServing(void){
 
     if (request->hasParam("name")) {
       String file = request->getParam("name")->value();
-      String safeFile = "/" + utilshdl->sanitizeFilename(file);
+      String safeFile = "/" + utilscds->sanitizaNomeArquivo(file);
       strlcpy(filename, safeFile.c_str(), MAX_PATH);
-      request->send(LittleFS, filename, utilshdl->getMimeType(filename));
+      request->send(LittleFS, filename, utilscds->obtemTipoMime(filename));
     } else {
-      request->send(HTTP_BAD_REQUEST, utilshdl->getMimeType(".txt"), "Parametro 'name' ausente");
+      request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "Parametro 'name' ausente");
     }
   });
 }
 
 void WebServerHandler::handleHome(){
   server->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {    
-    String html = "";
-    if(!strhdl->readFile(LittleFS, "/home.html", html)) {
+    String html = utilscds->lerArquivo("/home.html");
+    if(html.length()==0) {
       html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
     } else {
+      String mqttUser = "";
+      #ifdef USE_MQTT
+      mqttUser = utilscds->obtemMqttUser();
+      #endif
       html.replace("0.0.0", apiVersion);
+
       html.replace("AIO_USERNAME", mqttUser);
       html.replace("HOST_WATER", host + ".local");
     }
-    request->send(HTTP_OK, utilshdl->getMimeType(".html"), html);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), html);
   });
 }
 
 void WebServerHandler::handleSwagger(){
   server->on("/swagger.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String html = "";
-    if(!strhdl->readFile(LittleFS, "/swagger.json", html)) {      
+    String html = utilscds->lerArquivo("/sagger.json");
+    if(html.length()==0) { 
       html=String(MSG_ARQUIVO_NAO_ENCONTRADO);  
     } else {
       html.replace("0.0.0",apiVersion);
       html.replace("HOST_WATER_LEVEL",host+".local");         
     }
-    request->send(HTTP_OK, utilshdl->getMimeType(".json"), html);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), html);
   });
 }
 
 void WebServerHandler::handleSwaggerUI(){
   server->on("/swaggerUI", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String html = "";
-    if(!strhdl->readFile(LittleFS, "/swaggerUI.html", html)) {
+    String html = utilscds->lerArquivo("/swaggerUI.html");
+    if(html.length()==0) {
       html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
     } else {
       html.replace("HOST_WATER_LEVEL",host+".local");  
     }
-    request->send(HTTP_OK, utilshdl->getMimeType(".html"), html);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), html);
   });  
 }
 
 void WebServerHandler::handleHealth(){
   server->on("/health", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String JSONmessage = "{\"greeting\": \"Bem vindo ao Nível de Caixa d'água ESP8266 REST Web Server\",\"date\": \""+utilshdl->getDataHora()+"\",\"url\": \"/health\",\"version\": \""+apiVersion+"\",\"ip\": \""+utilshdl->IpAddress2String(WiFi.localIP())+"\"}";
-    request->send(HTTP_OK, utilshdl->getMimeType(".json"), JSONmessage);
+    String JSONmessage = "{\"greeting\": \"Bem vindo ao Nível de Caixa d'água ESP8266 REST Web Server\",\"date\": \""+utilscds->obtemDataHora()+"\",\"url\": \"/health\",\"version\": \""+apiVersion+"\",\"ip\": \""+utilscds->enderecoIpTexto(WiFi.localIP())+"\"}";
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), JSONmessage);
   });
 }
 
 void WebServerHandler::handleMetrics(){
   server->on("/metrics", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    request->send(HTTP_OK, utilshdl->getMimeType(".txt"), obtemMetricas());
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".txt"), obtemMetricas());
   });
 }
 
@@ -198,9 +194,9 @@ void WebServerHandler::handlePorts(){
         arduinoSensorPort = sensorListaEncadeada.get(i);
         JSONmessage += "{\"id\": \""+String(arduinoSensorPort->id)+"\",\"gpio\": \""+String(arduinoSensorPort->gpio)+"\",\"name\": \""+String(arduinoSensorPort->name)+"\"},";
       }
-      request->send(HTTP_OK, utilshdl->getMimeType(".json"), '['+JSONmessage.substring(0, JSONmessage.length()-1)+']');
+      request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), '['+JSONmessage.substring(0, JSONmessage.length()-1)+']');
     } else {
-      request->send(HTTP_UNAUTHORIZED, utilshdl->getMimeType(".txt"), WRONG_AUTHORIZATION);
+      request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
     }
   });  
 }
@@ -208,45 +204,54 @@ void WebServerHandler::handlePorts(){
 void WebServerHandler::handleSensors() {
   server->on("/sensors", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if (!check_authorization_header(request)) {
-      request->send(HTTP_UNAUTHORIZED, utilshdl->getMimeType(".txt"), WRONG_AUTHORIZATION);
+      request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
       return;
     }
 
     const AsyncWebParameter* pSensor = request->getParam("sensor");
-    if (!pSensor) { request->send(HTTP_BAD_REQUEST, utilshdl->getMimeType(".txt"), "missing level"); return; }
+    if (!pSensor) { request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "missing level"); return; }
 
     int sensor = pSensor->value().toInt(); 
     bool on = readLevelStable(sensor);
     if (auto s = searchListSensor(sensor)) s->status = on;
     String resp = on ? "ativado" : "desativado";
-    request->send(HTTP_OK, utilshdl->getMimeType(".txt"), resp);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".txt"), resp);
   });  
 }
 
 void WebServerHandler::handleWaterList(){
   server->on("/water-list", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/water-list.png", utilshdl->getMimeType("/water-list.png"));
+    request->send(LittleFS, "/water-list.png", utilscds->obtemTipoMime("/water-list.png"));
   });
 }
  
 void WebServerHandler::handleRegadorRobo(){
   server->on("/regador-robo", HTTP_GET, [this](AsyncWebServerRequest *request) {
-   request->send(LittleFS, "/regador-robo.png", utilshdl->getMimeType("/regador-robo.png"));
+   request->send(LittleFS, "/regador-robo.png", utilscds->obtemTipoMime("/regador-robo.png"));
   });
 }
 
 void WebServerHandler::handleEventos(){
   server->on("/eventos", HTTP_GET, [this](AsyncWebServerRequest *request) {
     char filename[] = "/eventos.html";    
-    String html = "";
-    if(!strhdl->readFile(LittleFS, filename, html)) {
+    String html = utilscds->lerArquivo(filename);
+    if(html.length()==0) {
       html = HTML_MISSING_DATA_UPLOAD;
     } else {
+      String mqttBroker = "";
+      String mqttUser = "";
+      String mqttPass = "";
+      #ifdef USE_MQTT
+        mqttBroker = utilscds->obtemMqttBroker();
+        mqttUser = utilscds->obtemMqttUser();
+        mqttPass = utilscds->obtemMqttPass();
+      #endif
+
       html.replace("AIO_SERVER", mqttBroker);
       html.replace("AIO_USERNAME", mqttUser);
       html.replace("AIO_KEY", mqttPass);
     }
-    request->send(HTTP_OK, utilshdl->getMimeType(filename), html);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(filename), html);
   });
 }
 
@@ -260,9 +265,9 @@ void WebServerHandler::handleLists(){
         agd = agendaListaEncadeada.get(i);
         JSONmessage += "{\"id\": "+String(i+1)+",\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}"+",";
       }
-      request->send(HTTP_OK, utilshdl->getMimeType(".json"), "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]");
+      request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]");
     } else {
-      request->send(HTTP_UNAUTHORIZED, utilshdl->getMimeType(".txt"), WRONG_AUTHORIZATION);
+      request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
     }
   });
 }
@@ -275,7 +280,7 @@ void WebServerHandler::handleOptions(){
 
 void WebServerHandler::handleOnError(){
   server->onNotFound([this](AsyncWebServerRequest *request) {
-    request->send(HTTP_NOT_FOUND, utilshdl->getMimeType(".txt"), "Rota não encontrada");
+    request->send(HTTP_NOT_FOUND, utilscds->obtemTipoMime(".txt"), "Rota não encontrada");
   });
 }
 
@@ -317,14 +322,6 @@ void WebServerHandler::notifySensors(const String& id, bool sWater, bool sLevel)
 }
 
 void WebServerHandler::startWebServer() {
-  utilshdl->setClock();
-
-  // inicio o mqtt
-  mqtthdl = new MqttHandler(mqttUser,
-                     mqttPass,
-                     savedSsid,
-                     savedPass);
-
   // carrega sensores  
   bool load = loadSensorList();
   if(!load) {
@@ -454,15 +451,15 @@ void WebServerHandler::saveAgendaList() {
   }
   JSONmessage = "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]";
   // Grava no storage
-  strhdl->writeFile(LittleFS,"/lista.json",JSONmessage.c_str()); 
+  utilscds->escreveArquivo("/lista.json", JSONmessage);
   // Grava no adafruit
-  mqtthdl->setFeed("list", JSONmessage.c_str());
+  utilscds->atribuiFeed("list", JSONmessage.c_str());
 }
 
 int WebServerHandler::loadAgendaList() {
   // Carrega do storage
-  String JSONmessage = "";
-  if(!strhdl->readFile(LittleFS, "/lista.json", JSONmessage)) {
+  String JSONmessage = utilscds->lerArquivo("/lista.json");
+  if(JSONmessage.length()==0) {
     #ifdef DEBUG
       Serial.println(F("Lista local de eventos vazia"));
     #endif
@@ -493,7 +490,7 @@ void WebServerHandler::nivelAlto() {
 void WebServerHandler::ligarBomba(){
   Serial.println("Ligo a bomba");
   digitalWrite(RelayWater, HIGH);
-  mqtthdl->setFeed("water", "ON");
+  utilscds->atribuiFeed("water", "ON");
   
   // acendo a luz
   Serial.println("Acendo a luz");
@@ -504,7 +501,7 @@ void WebServerHandler::desligarBomba(){
   // desligo a bomba
   Serial.println("Desligo a bomba");
   digitalWrite(RelayWater, LOW);
-  mqtthdl->setFeed("water", "OFF");
+  utilscds->atribuiFeed("water", "OFF");
 
   //apago a luz
   Serial.println("Apago a luz");
@@ -523,13 +520,13 @@ void WebServerHandler::registerPortalRoutes() {
   // Página principal
   server->on("/", HTTP_GET, [this](AsyncWebServerRequest* request){
     Serial.println("[HTTP] GET /");
-    String html = "";
-    if(!strhdl->readFile(LittleFS, "/wifimanager.html", html)) {
+    String html = utilscds->lerArquivo("/wifimanager.html");
+    if(html.length()==0) {
       Serial.println("readFile->registerPortalRoutes");
-      request->send(HTTP_OK, utilshdl->getMimeType(".html"), MSG_ARQUIVO_NAO_ENCONTRADO);
+      request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), MSG_ARQUIVO_NAO_ENCONTRADO);
     }
     else {
-      request->send(HTTP_OK, utilshdl->getMimeType(".html"), html);
+      request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), html);
     }
   });
 
@@ -538,12 +535,12 @@ void WebServerHandler::registerPortalRoutes() {
     Serial.println("[HTTP] POST /save");
     String ssid = request->arg("ssid");
     String pass = request->arg("pass");
-    if (ssid.isEmpty()) { request->send(HTTP_BAD_REQUEST, utilshdl->getMimeType(".txt"), "SSID vazio"); return; }
+    if (ssid.isEmpty()) { request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "SSID vazio"); return; }
 
-    prefshdl->saveDataPreferentials("wifi", "ssid", ssid.c_str());
-    prefshdl->saveDataPreferentials("wifi", "pass", pass.c_str());
+    utilscds->salvaDado("wifi", "ssid", ssid.c_str());
+    utilscds->salvaDado("wifi", "pass", pass.c_str());
   
-    request->send(HTTP_OK, utilshdl->getMimeType(".txt"), "Credenciais salvas. Reiniciando...");
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".txt"), "Credenciais salvas. Reiniciando...");
     delay(300);
     ESP.restart();
   });
@@ -577,8 +574,8 @@ void WebServerHandler::startWebServerWifiManager(const String& apName) {
 bool WebServerHandler::connectSTA(const String& hostForMDNS) {
   (void)hostForMDNS;
 
-  savedSsid = prefshdl->loadDataPreferentials("wifi", "ssid", "");
-  savedPass = prefshdl->loadDataPreferentials("wifi", "pass", "");
+  savedSsid = utilscds->carregaDado("wifi", "ssid", savedSsid.c_str());
+  savedPass = utilscds->carregaDado("wifi", "pass", savedPass.c_str());
   
   if (savedSsid.isEmpty()) {
     Serial.println(F("Sem credenciais salvas."));

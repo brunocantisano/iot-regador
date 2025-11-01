@@ -8,6 +8,7 @@ const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 
 // ====== Objetos do seu projeto ======
 ArduinoUtilsCds utilscds;
+WiFiClient wifiClient;
 AsyncWebServer server(HTTP_REST_PORT);
 WebServerHandler * websrvhdl = nullptr;
 Credentials creds;
@@ -61,12 +62,11 @@ void setup() {
         decrypted_passFirmware = utilscds.decrypta(creds.passFirmware, creds.passFirmwareLength);
         decrypted_apiToken     = utilscds.decrypta(creds.apiToken, creds.apiTokenLength);
 
-        Serial.println("decrypted_userMqtt: "+decrypted_userMqtt);
-        Serial.println("decrypted_passMqtt: "+decrypted_passMqtt);
-        Serial.println("decrypted_userFirmware: "+decrypted_userFirmware);
-        Serial.println("decrypted_passFirmware: "+decrypted_passFirmware);
-        Serial.println("decrypted_apiToken: "+decrypted_apiToken);
-
+        //Serial.println("decrypted_userMqtt: "+decrypted_userMqtt);
+        //Serial.println("decrypted_passMqtt: "+decrypted_passMqtt);
+        //Serial.println("decrypted_userFirmware: "+decrypted_userFirmware);
+        //Serial.println("decrypted_passFirmware: "+decrypted_passFirmware);
+        //Serial.println("decrypted_apiToken: "+decrypted_apiToken);
         const String hostName = creds.host.isEmpty() ? String("device") : creds.host;
 
         // === Servidor principal e OTA (só quando conectado) ===
@@ -77,23 +77,32 @@ void setup() {
           creds.callerOrigin,
           &utilscds
         );
-
         // === Wi-Fi: tenta STA; se falhar, abre portal ===
         isWiFiConnected = websrvhdl->connectSTA(hostName);
         if (!isWiFiConnected) {
           String apName = hostName.isEmpty() ? String("device-setup") : (hostName + "-setup");
           websrvhdl->startWebServerWifiManager(apName);
           Serial.println("WiFi não configurado!");
-          Serial.println("Por favor, conecte-se em: " + apName + " e entre em: http://" + hostName + ".local para configuração do WiFi.");
+          Serial.println("Por favor, conecte-se em: " + apName + " e entre em: http://" + hostName + " para configuração do WiFi.");
         } else {
+#ifdef USE_MQTT
+          // === Servidor principal e OTA (só quando conectado) ===
+          //Serial.println("mqttBroker: "+creds.mqttBroker);
+          //Serial.println("decrypted_userMqtt: "+decrypted_userMqtt);
+          //Serial.println("decrypted_passMqtt: "+decrypted_passMqtt);
+          // inicio o mqtt
+          if(!utilscds.iniciaMqtt(creds.mqttBroker, decrypted_userMqtt, decrypted_passMqtt, &wifiClient)){
+            Serial.println("Não conseguiu se conectar no MQTT");
+          } 
+#endif
           char usuario[64];
           char senha[64];
           String ssid = WiFi.SSID();
           String pass = WiFi.psk();
           strncpy(usuario, ssid.c_str(), sizeof(usuario));
           strncpy(senha, pass.c_str(), sizeof(senha));
-          utilscds.salvaCredenciaisWiFi(usuario, senha);
-          
+          utilscds.salvaCredenciaisWiFi(usuario, senha);          
+
           websrvhdl->startWebServer();   // registra rotas no 'server' e chama server->begin() lá dentro
           Serial.println("Web Server inicializado");
           utilscds.iniciaOta(&server, decrypted_userFirmware, decrypted_passFirmware);
@@ -104,11 +113,6 @@ void setup() {
           // Atribuindo clock para conseguir usar datetime nos arquivos de log
           utilscds.atribuiRelogio();
 
-          #ifdef USE_MQTT
-            // inicio o mqtt
-            utilscds.iniciaMqtt(creds.mqttBroker, decrypted_userMqtt, decrypted_passMqtt, usuario, senha);
-          #endif
-
           if(!MDNS.begin(hostname)){
             Serial.println("mDNS falhou");
             delay(1000);
@@ -117,8 +121,7 @@ void setup() {
           }
           MDNS.addService("http", "tcp", 80);
           Serial.print(F("mDNS ok: http://"));
-          Serial.print(hostname);     // hostname = const char* ou String
-          Serial.println(F(".local"));
+          Serial.println(hostname);
         }
       } else {
         Serial.println("Credenciais inválidas");
@@ -132,7 +135,11 @@ void setup() {
 void loop() {
   if (isWiFiConnected) {
     MDNS.update();
-    utilscds.loopOta();    // se o seu OtaHandler exigi
+    utilscds.loopOta();
+    
+    #ifdef USE_MQTT
+      utilscds.atualizaMqtt();
+    #endif
     /*
     // Report every 1 minuto.
     if(timeSinceLastRead > 1000) {

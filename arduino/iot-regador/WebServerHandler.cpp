@@ -134,13 +134,14 @@ void WebServerHandler::handleHome(){
       html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
     } else {
       String mqttUser = "";
+      
       #ifdef USE_MQTT
-      mqttUser = utilscds->obtemMqttUser();
+        mqttUser = utilscds->obtemMqttUser();
       #endif
-      html.replace("0.0.0", apiVersion);
-
+      
+      html.replace("VERSION", apiVersion);
       html.replace("AIO_USERNAME", mqttUser);
-      html.replace("HOST_WATER", host + ".local");
+      html.replace("HOST_WATER", host);
     }
     request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), html);
   });
@@ -148,14 +149,14 @@ void WebServerHandler::handleHome(){
 
 void WebServerHandler::handleSwagger(){
   server->on("/swagger.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String html = utilscds->lerArquivo("/sagger.json");
-    if(html.length()==0) { 
-      html=String(MSG_ARQUIVO_NAO_ENCONTRADO);  
+    String json = utilscds->lerArquivo("/swagger.json");
+    if(json.length()==0) { 
+      json=String(MSG_ARQUIVO_NAO_ENCONTRADO);  
     } else {
-      html.replace("0.0.0",apiVersion);
-      html.replace("HOST_WATER_LEVEL",host+".local");         
+      json.replace("0.0.0",apiVersion);
+      json.replace("HOST_WATER",host);         
     }
-    request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), html);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), json);
   });
 }
 
@@ -165,7 +166,7 @@ void WebServerHandler::handleSwaggerUI(){
     if(html.length()==0) {
       html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
     } else {
-      html.replace("HOST_WATER_LEVEL",host+".local");  
+      html.replace("HOST_WATER",host+".local");
     }
     request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), html);
   });  
@@ -224,12 +225,6 @@ void WebServerHandler::handleWaterList(){
     request->send(LittleFS, "/water-list.png", utilscds->obtemTipoMime("/water-list.png"));
   });
 }
- 
-void WebServerHandler::handleRegadorRobo(){
-  server->on("/regador-robo", HTTP_GET, [this](AsyncWebServerRequest *request) {
-   request->send(LittleFS, "/regador-robo.png", utilscds->obtemTipoMime("/regador-robo.png"));
-  });
-}
 
 void WebServerHandler::handleEventos(){
   server->on("/eventos", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -246,7 +241,6 @@ void WebServerHandler::handleEventos(){
         mqttUser = utilscds->obtemMqttUser();
         mqttPass = utilscds->obtemMqttPass();
       #endif
-
       html.replace("AIO_SERVER", mqttBroker);
       html.replace("AIO_USERNAME", mqttUser);
       html.replace("AIO_KEY", mqttPass);
@@ -280,7 +274,13 @@ void WebServerHandler::handleOptions(){
 
 void WebServerHandler::handleOnError(){
   server->onNotFound([this](AsyncWebServerRequest *request) {
-    request->send(HTTP_NOT_FOUND, utilscds->obtemTipoMime(".txt"), "Rota não encontrada");
+    String html = utilscds->lerArquivo("/error.html");
+    if(html.length()==0) {
+      html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
+    } else {
+      html.replace("HOST_WATER", host);
+    }
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), html);
   });
 }
 
@@ -352,7 +352,6 @@ void WebServerHandler::startWebServer() {
   handleSensors();
 
   handleWaterList();
-  handleRegadorRobo();
   handleEventos();
 
   // Rotas bloqueadas pelo token authorization
@@ -512,6 +511,7 @@ void WebServerHandler::desligarBomba(){
  *  Rotas do portal (AP)
  **********************************************/
 void WebServerHandler::registerPortalRoutes() {
+  handleFileServing(); 
   // Captive endpoints comuns dos SOs → manda para "/"
   server->on("/generate_204", HTTP_ANY, [this](AsyncWebServerRequest* r){ r->redirect("/"); });
   server->on("/hotspot-detect.html", HTTP_ANY, [this](AsyncWebServerRequest* r){ r->redirect("/"); });
@@ -541,7 +541,7 @@ void WebServerHandler::registerPortalRoutes() {
     utilscds->salvaDado("wifi", "pass", pass.c_str());
   
     request->send(HTTP_OK, utilscds->obtemTipoMime(".txt"), "Credenciais salvas. Reiniciando...");
-    delay(300);
+    delay(3000);
     ESP.restart();
   });
 
@@ -563,7 +563,7 @@ void WebServerHandler::startWebServerWifiManager(const String& apName) {
   Serial.printf("AP '%s' em %s\n", apName.c_str(), apIP.toString().c_str());
 
   dns.start(53, "*", apIP);            // captive DNS
-
+  
   registerPortalRoutes();              // <<<<< REGISTRAR ANTES do begin()
   server->begin();
 }

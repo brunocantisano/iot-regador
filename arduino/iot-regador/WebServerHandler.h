@@ -69,7 +69,6 @@ private:
     bool check_authorization_header(AsyncWebServerRequest * request);
     char payloadBuffer[MAX_PAYLOAD_SIZE];
     void handleFileServing();
-    void handleHomeRaw();
     void handleHome();
     void handleSwagger();
     void handleSwaggerUI();
@@ -93,7 +92,6 @@ public:
         const String& hostServer, 
         const String& caller,
         ArduinoUtilsCds * cds);
-        
     ~WebServerHandler();
 
     void startWebServer(void);
@@ -112,7 +110,6 @@ public:
     void nivelAlto();
     void ligarBomba();
     void desligarBomba();
-
     AsyncWebServer * getWebServer();
 };
 

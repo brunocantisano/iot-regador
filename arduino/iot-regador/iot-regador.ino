@@ -103,10 +103,11 @@ void setup() {
           strncpy(senha, pass.c_str(), sizeof(senha));
           utilscds.salvaCredenciaisWiFi(usuario, senha);          
 
-          websrvhdl->startWebServer();   // registra rotas no 'server' e chama server->begin() lá dentro
-          Serial.println("Web Server inicializado");
           utilscds.iniciaOta(&server, decrypted_userFirmware, decrypted_passFirmware);
           Serial.println("OTA inicializado");
+          
+          websrvhdl->startWebServer();   // registra rotas no 'server' e chama server->begin() lá dentro
+          Serial.println("Web Server inicializado");
 
           const char * hostname = hostName.c_str();
           MDNS.end();

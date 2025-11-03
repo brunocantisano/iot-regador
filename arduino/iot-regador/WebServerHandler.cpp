@@ -187,18 +187,18 @@ void WebServerHandler::handleMetrics(){
 
 void WebServerHandler::handlePorts(){
   server->on("/ports", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    if(check_authorization_header(request)) {
-      String JSONmessage;
-      ArduinoSensorPort *arduinoSensorPort;    
-      for(int i = 0; i < sensorListaEncadeada.size(); i++){
-        // Obtem a aplicação da lista
-        arduinoSensorPort = sensorListaEncadeada.get(i);
-        JSONmessage += "{\"id\": \""+String(arduinoSensorPort->id)+"\",\"gpio\": \""+String(arduinoSensorPort->gpio)+"\",\"name\": \""+String(arduinoSensorPort->name)+"\"},";
-      }
-      request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), '['+JSONmessage.substring(0, JSONmessage.length()-1)+']');
-    } else {
+    if (!check_authorization_header(request)) {
       request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
+      return;
+    }    
+    String JSONmessage;
+    ArduinoSensorPort *arduinoSensorPort;    
+    for(int i = 0; i < sensorListaEncadeada.size(); i++){
+      // Obtem a aplicação da lista
+      arduinoSensorPort = sensorListaEncadeada.get(i);
+      JSONmessage += "{\"id\": \""+String(arduinoSensorPort->id)+"\",\"gpio\": \""+String(arduinoSensorPort->gpio)+"\",\"name\": \""+String(arduinoSensorPort->name)+"\"},";
     }
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), '['+JSONmessage.substring(0, JSONmessage.length()-1)+']');
   });  
 }
 
@@ -220,9 +220,59 @@ void WebServerHandler::handleSensors() {
   });  
 }
 
-void WebServerHandler::handleWaterList(){
-  server->on("/water-list", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    request->send(LittleFS, "/water-list.png", utilscds->obtemTipoMime("/water-list.png"));
+void WebServerHandler::handleUpdateSensors() {
+  server->on("/sensors", HTTP_PUT, [this](AsyncWebServerRequest *request) {}, NULL,
+    [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+
+    if (!check_authorization_header(request)) {
+      request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
+      return;
+    }
+
+    // Parâmetro sensor obrigatório na query
+    const AsyncWebParameter* pSensor = request->getParam("sensor");
+    if (!pSensor) { 
+      request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "missing sensor"); 
+      return; 
+    }
+   
+    // Monta o corpo JSON (body)
+    String body;
+    for (size_t i = 0; i < len; i++) {
+      body += (char)data[i];
+    }
+
+    // Faz parse do JSON
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, body);
+    int newValue = 0;
+    if (!err && doc["value"].is<int>()) {
+      newValue = doc["value"].as<int>();
+    }
+    if (err) {
+      request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "invalid json");
+      return;
+    }
+    
+    if (!(doc["value"].is<int>())) {
+      request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "missing or invalid 'value'");
+      return;
+    }
+
+    newValue = doc["value"].as<int>();
+    if (newValue != 0 && newValue != 1) {
+      request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "invalid value");
+      return;
+    }
+
+    // Atualiza o pino
+    pinMode(newValue, OUTPUT);
+    int n = newValue==0?LOW:HIGH;
+    digitalWrite(newValue, n);
+    if (auto s = searchListSensor(newValue)) s->status = n;
+
+    String resp = n == 0 ? "desativado":"ativado";
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".txt"), resp);
   });
 }
 
@@ -257,10 +307,75 @@ void WebServerHandler::handleLists(){
       for(int i = 0; i < agendaListaEncadeada.size(); i++){
         // Obtem a aplicação da lista
         agd = agendaListaEncadeada.get(i);
-        JSONmessage += "{\"id\": "+String(i+1)+",\"dataAgenda\": \""+String(agd->dataAgenda)+"\"}"+",";
+        JSONmessage += "{\"id\": "+String(i+1)+",\"data\": \""+String(agd->dataAgenda)+"\"}"+",";
       }
       request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]");
     } else {
+      request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
+    }
+  });
+}
+
+void WebServerHandler::handleInsertItemList(){
+  server->on("/list", HTTP_POST, [this](AsyncWebServerRequest * request){}, NULL,
+    [this](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+    if(check_authorization_header(request)) {
+      String JSONmessageBody;
+      for (size_t i = 0; i < len; i++) {
+        JSONmessageBody += (char)data[i];
+      }
+      JsonDocument doc;  // v7: alocação dinâmica
+      DeserializationError error = deserializeJson(doc, JSONmessageBody);
+      if(error) {
+        request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".json"), PARSER_ERROR);
+      } else {
+        //busco para checar se aplicacao já existe
+        int index = searchList(doc["data"]);
+        if(index == -1) {
+          // não existe, então posso inserir
+          // adiciona item na lista de agendamentos
+          addAgenda(doc["data"]);
+          // Grava no Storage
+          saveAgendaList();
+          doc.clear();
+          request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), INSERTED_ITEM);
+        } else {
+          request->send(HTTP_CONFLICT, utilscds->obtemTipoMime(".txt"), EXISTING_ITEM);
+        }
+      }
+   } else {
+    request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
+   }
+  });
+}
+
+void WebServerHandler::handleDeleteItemList(){
+  server->on("/list", HTTP_DELETE, [this](AsyncWebServerRequest * request){}, NULL,
+    [this](AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+    if(check_authorization_header(request)) {
+      String JSONmessageBody;
+      for (size_t i = 0; i < len; i++) {
+        JSONmessageBody += (char)data[i];
+      }
+      JsonDocument doc;  // v7: alocação dinâmica
+      DeserializationError error = deserializeJson(doc, JSONmessageBody);
+      if(error) {
+        request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".json"), PARSER_ERROR);
+      } else {
+      //busco pela aplicacao a ser removida
+      int index = searchList(doc["data"]);
+      if(index != -1) {
+        //removo
+        removeAgenda(index);
+        // Grava no Storage
+        saveAgendaList();
+        doc.clear();
+        request->send(HTTP_OK, utilscds->obtemTipoMime(".txt"), REMOVED_ITEM);
+      } else {
+        request->send(HTTP_NOT_FOUND, utilscds->obtemTipoMime(".txt"), NOT_FOUND_ITEM);
+      }
+    }
+   } else {
       request->send(HTTP_UNAUTHORIZED, utilscds->obtemTipoMime(".txt"), WRONG_AUTHORIZATION);
     }
   });
@@ -350,12 +465,13 @@ void WebServerHandler::startWebServer() {
   */
   handlePorts();
   handleSensors();
-
-  handleWaterList();
+  handleUpdateSensors();
   handleEventos();
 
   // Rotas bloqueadas pelo token authorization
   handleLists();
+  handleInsertItemList();
+  handleDeleteItemList();
   // ------------------------------------ //
       
   // se não se enquadrar em nenhuma das rotas
@@ -440,6 +556,10 @@ void WebServerHandler::addAgenda(String dataAgenda) {
   agendaListaEncadeada.add(agdnew);
 }
 
+void WebServerHandler::removeAgenda(int index) {
+  agendaListaEncadeada.remove(index);
+}
+
 void WebServerHandler::saveAgendaList() {
   Agenda *agd;
   String JSONmessage;
@@ -451,8 +571,10 @@ void WebServerHandler::saveAgendaList() {
   JSONmessage = "["+JSONmessage.substring(0, JSONmessage.length()-1)+"]";
   // Grava no storage
   utilscds->escreveArquivo("/lista.json", JSONmessage);
-  // Grava no adafruit
-  utilscds->atribuiFeed("list", JSONmessage.c_str());
+  #ifdef USE_MQTT
+    // Grava no adafruit
+    utilscds->atribuiFeed("list", JSONmessage.c_str());
+  #endif
 }
 
 int WebServerHandler::loadAgendaList() {

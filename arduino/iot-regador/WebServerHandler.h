@@ -76,10 +76,11 @@ private:
     void handleMetrics();
     void handlePorts();
     void handleSensors();
-    void handleWaterList();
-    void handleRegadorRobo();
+    void handleUpdateSensors();
     void handleEventos();
     void handleLists();
+    void handleInsertItemList();
+    void handleDeleteItemList();
     void handleOptions();
     void handleOnError();    
     void registerPortalRoutes();
@@ -104,6 +105,7 @@ public:
     int searchList(String dataAgenda);
     bool validaHora(String hora);
     void addAgenda(String dataAgenda);
+    void removeAgenda(int index);
     void saveAgendaList();
     int loadAgendaList();
     void nivelBaixo();

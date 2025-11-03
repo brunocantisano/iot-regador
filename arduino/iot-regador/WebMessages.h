@@ -3,6 +3,7 @@ const char NOT_AUTHORIZED_EXTENTIONS[] PROGMEM = "Extensão de arquivo inválida
 const char SDCARD_PHOTO_WRITTEN[] PROGMEM = "Imagem salva no cartão SD com sucesso";
 const char WRONG_STATUS[] PROGMEM = "Erro ao atualizar o status";
 const char EXISTING_ITEM[] PROGMEM = "Item já existente na lista";
+const char INSERTED_ITEM[] PROGMEM = "Item inserido na lista";
 const char REMOVED_ITEM[] PROGMEM = "Item removido da lista";
 const char REMOVED_FILE[] PROGMEM = "Arquivo removido";
 const char UPLOADED_FILE[] PROGMEM = "Arquivo criado com sucesso";

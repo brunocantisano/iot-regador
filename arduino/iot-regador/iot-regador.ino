@@ -1,7 +1,7 @@
-
 // ====== SEUS HEADERS ======
 #include "Config.h"
 #include "WebServerHandler.h"
+#include <ArduinoUtilsCds.h>
 const char LITTLEFS_ERROR[] PROGMEM = "Erro ocorreu ao tentar montar LittleFS";
 
 //---------------------------------//

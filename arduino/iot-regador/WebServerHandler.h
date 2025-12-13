@@ -21,21 +21,13 @@
 
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <ESPAsyncDNSServer.h>
+//#include <ESPAsyncDNSServer.h>
 
 #include <pgmspace.h>   // PROGMEM
 #include <ArduinoJson.h>
 #include <Regexp.h>
-#include "Config.h"
 #include "WebMessages.h"
-#include "Tipos.h"
-#include "StorageHandler.h"
-#include "UtilsHandler.h"
-#include "MqttHandler.h"
-#include "PreferencesHandler.h"
-#include "HttpStatusCodes.h"
 
-#include <ArduinoUtilsCds.h>
 
 #define HTTP_REST_PORT             80
 #define MAX_PAYLOAD_SIZE           2000

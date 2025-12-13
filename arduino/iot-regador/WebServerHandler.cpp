@@ -1,7 +1,5 @@
 // WebServerHandler.cpp
 #include "WebServerHandler.h"
-#include <FS.h>
-#include <LittleFS.h>
 
 static const char* MSG_ARQUIVO_NAO_ENCONTRADO = "Provavelmente voce nao carregou os arquivos da pasta \"data\" (LittleFS) para o servidor!";
 // Ajuste aqui conforme sua fiação:

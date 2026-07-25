@@ -698,13 +698,81 @@ void WebServerHandler::registerPortalRoutes() {
     Serial.println("[HTTP] POST /save");
     String ssid = request->arg("ssid");
     String pass = request->arg("pass");
-    if (ssid.isEmpty()) { request->send(HTTP_BAD_REQUEST, utilshdl->getMimeType(".txt"), "SSID vazio"); return; }
+    if (ssid.isEmpty()) { request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "SSID vazio"); return; }
 
-    utilscds->salvaDado("wifi", "ssid", ssid.c_str());
-    utilscds->salvaDado("wifi", "pass", pass.c_str());
-  
-    request->send(HTTP_OK, utilshdl->getMimeType(".txt"), "Credenciais salvas. Reiniciando...");
-    delay(3000);
+    prefshdl->saveDataPreferentials("wifi", "ssid", ssid.c_str());
+    prefshdl->saveDataPreferentials("wifi", "pass", pass.c_str());
+
+    // Campos opcionais: em branco mantém o valor já salvo anteriormente.
+    String userFirmware = request->arg("user_firmware");
+    String passFirmware = request->arg("pass_firmware");
+    String apiUser       = request->arg("api_user");
+    String apiPass       = request->arg("api_pass");
+
+    String callerOrigin  = request->arg("caller_origin");
+    String mqttBroker    = request->arg("mqtt_broker");
+    String mqttPort      = request->arg("mqtt_port");
+    String mqttUsername  = request->arg("mqtt_username");
+    String mqttPassword  = request->arg("mqtt_password");
+
+    if (!userFirmware.isEmpty()) {
+      prefshdl->saveDataPreferentials("firmware", "user", utilscds->encrypta(userFirmware));
+      prefshdl->saveDataPreferentials("firmware", "userLen", String(userFirmware.length()).c_str());
+    }
+    if (!passFirmware.isEmpty()) {
+      prefshdl->saveDataPreferentials("firmware", "pass", utilscds->encrypta(passFirmware));
+      prefshdl->saveDataPreferentials("firmware", "passLen", String(passFirmware.length()).c_str());
+    }
+    // Token de API no formato HTTP Basic: base64("usuario:senha"), depois criptografado.
+    if (!apiUser.isEmpty() && !apiPass.isEmpty()) {
+      String basicAuthPlain = apiUser + ":" + apiPass;
+      String basicAuthB64 = base64::encode(basicAuthPlain);
+      prefshdl->saveDataPreferentials("api", "token", utilscds->encrypta(basicAuthB64));
+      prefshdl->saveDataPreferentials("api", "tokenLen", String(basicAuthB64.length()).c_str());
+    }
+	  if (!callerOrigin.isEmpty()) {
+      prefshdl->saveDataPreferentials("api", "callerOrigin", callerOrigin.c_str());
+    }
+    if (!mqttBroker.isEmpty()) {
+      prefshdl->saveDataPreferentials("mqtt", "broker", mqttBroker.c_str());
+    }
+    if (!mqttPort.isEmpty()) {
+      prefshdl->saveDataPreferentials("mqtt", "port", mqttPort.c_str());
+    }
+    if (!mqttUsername.isEmpty()) {
+      prefshdl->saveDataPreferentials("mqtt", "username", utilscds->encrypta(mqttUsername));
+      prefshdl->saveDataPreferentials("mqtt", "usernameLen", String(mqttUsername.length()).c_str());
+    }
+    if (!mqttPassword.isEmpty()) {
+      prefshdl->saveDataPreferentials("mqtt", "password", utilscds->encrypta(mqttPassword));
+      prefshdl->saveDataPreferentials("mqtt", "passwordLen", String(mqttPassword.length()).c_str());
+    }
+    String mdnsHost = host.isEmpty() ? "regador" : host;
+    String html = F(
+      "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\">"
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+      "<title>Configuração salva</title><style>:root{--bg:#0f172a;--card:#1e293b;"
+      "--card-border:#334155;--accent:#38bdf8;--text:#e2e8f0;--muted:#94a3b8;--ok:#22c55e}"
+      "*{box-sizing:border-box}body{font-family:system-ui,-apple-system,\"Segoe UI\",Roboto,Arial,sans-serif;"
+      "margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;"
+      "background:radial-gradient(1200px 600px at 50% -10%,#1e293b 0,var(--bg) 60%);color:var(--text);padding:24px}"
+      ".card{width:100%;max-width:420px;background:var(--card);border:1px solid var(--card-border);"
+      "border-radius:16px;padding:32px 28px;box-shadow:0 20px 50px rgba(0,0,0,.45);text-align:center}"
+      "h1{font-size:20px;margin:0 0 8px}p{color:var(--muted);font-size:14px;line-height:1.6;margin:0 0 20px}"
+      "a.url{display:inline-block;color:#06283d;background:var(--accent);padding:12px 18px;"
+      "border-radius:10px;font-weight:600;text-decoration:none;font-size:15px}"
+      ".foot{display:flex;align-items:center;gap:8px;margin-top:20px;color:var(--muted);"
+      "font-size:12px;justify-content:center}.dot{width:8px;height:8px;border-radius:50%;"
+      "background:var(--ok);box-shadow:0 0 8px var(--ok)}</style></head><body><div class=\"card\">"
+      "<h1>Configuração salva!</h1><p>O dispositivo vai reiniciar e conectar na sua rede Wi-Fi. "
+      "Depois de alguns segundos, acesse o endereço abaixo pelo navegador:</p>"
+      "<a class=\"url\" href=\"http://HOST.local\">http://HOST.local</a>"
+      "<div class=\"foot\"><span class=\"dot\"></span><span>Reiniciando...</span></div>"
+      "</div></body></html>"
+    );
+    html.replace("HOST", mdnsHost);
+    request->send(HTTP_OK, utilshdl->getMimeType(".html"), html);
+    delay(300);
     ESP.restart();
   });
 
@@ -765,4 +833,8 @@ bool WebServerHandler::connectSTA(const String& hostForMDNS) {
   Serial.print(F("Conectado! IP: "));
   Serial.println(WiFi.localIP());
   return true;
+}
+
+void WebServerHandler::atualizaApiToken(const String& token) {
+  apiToken = token;
 }

@@ -8,20 +8,19 @@
 // ====== Objetos do seu projeto ======
 ArduinoUtilsCds * utilscds = nullptr;
 WiFiClient wifiClient;
-AsyncWebServer server(HTTP_REST_PORT);
 WebServerHandler * websrvhdl = nullptr;
-Credentials creds;
 String decrypted_userFirmware;
 String decrypted_passFirmware;
 String decrypted_userMqtt;
 String decrypted_passMqtt;
 String decrypted_apiToken;
-bool isWiFiConnected = false;
+bool wifi_connected = false;
 
 //---------------------------------//
 //  SETUP
 void setup() {
-Serial.begin(SERIAL_BAUD);
+  Serial.begin(SERIAL_BAUD);
+  Serial.println("\nBoot...");
   delay(100);
 
   // Força inicialização completa do subsistema Wi-Fi
@@ -35,112 +34,173 @@ Serial.begin(SERIAL_BAUD);
   Serial.flush();
 
   utilscds = new ArduinoUtilsCds();
-  Serial.println("\nBoot...");
+  
+  utilscds->iniciaStorage();
+  utilscds->exibeMensagem("Inicializando o storage");
+  
+  // Carrega credenciais de texto simples
+  String hostName = "regador";
+  String version = String(API_VERSION);
+  String callerOrigin = utilscds->carregaDado("api", "callerOrigin", "");
+  utilscds->mensagemLog("[DEBUG] hostName.length() = %d", hostName.length());
+  utilscds->mensagemLog("[DEBUG] version.length() = %d", version.length());
+  utilscds->mensagemLog("[DEBUG] callerOrigin.length() = %d", callerOrigin.length());
+  utilscds->mensagemLog("[DEBUG] hostName bytes: ");
+  // Teste com array char em vez de String
+  char hostBuffer[64];
+  strncpy(hostBuffer, hostName.c_str(), 63);
+  hostBuffer[63] = '\0';
+  utilscds->mensagemLog("[DEBUG] HOST: %s", hostBuffer);  // Usa char[] em vez de String
 
-  // === 1. Leitura de TODOS os campos brutos primeiro ===
-  const String raw_userFirmware       = utilscds->getCampoCredencial(USER, "USER_FIRMWARE");
-  const int    len_userFirmware       = utilscds->getCampoCredencial(USER, "USER_FIRMWARE_LENGTH").toInt();
+  // URL final usando char buffer
+  char urlBuffer[128];
+  snprintf(urlBuffer, sizeof(urlBuffer), "URL esperada: http://%s.local", hostBuffer);
+  utilscds->mensagemLog("[DEBUG] URL: %s", urlBuffer);
 
-  const String raw_passFirmware       = utilscds->getCampoCredencial(USER, "PASS_FIRMWARE");
-  const int    len_passFirmware       = utilscds->getCampoCredencial(USER, "PASS_FIRMWARE_LENGTH").toInt();
-
-  const String hostName               = utilscds->getCampoCredencial(USER, "HOST");
-  const String apiVersion             = utilscds->getCampoCredencial(USER, "API_VERSION");
-  const String callerOrigin           = utilscds->getCampoCredencial(USER, "CALLER_ORIGIN");
-  const String raw_apiToken           = utilscds->getCampoCredencial(USER, "API_TOKEN");
-  const int    len_apiToken           = utilscds->getCampoCredencial(USER, "API_TOKEN_LENGTH").toInt();
-
-
-  const String mqttBroker             = utilscds->getCampoCredencial(USER, "MQTT_BROKER");  
-  const String raw_mqttUser           = utilscds->getCampoCredencial(USER, "MQTT_USERNAME");
-  const int    len_mqttUser           = utilscds->getCampoCredencial(USER, "MQTT_USERNAME_LENGTH").toInt();
- const String raw_mqttPass            = utilscds->getCampoCredencial(USER, "MQTT_PASSWORD");
-  const int    len_mqttPass           = utilscds->getCampoCredencial(USER, "MQTT_PASSWORD_LENGTH").toInt();
-  const int    mqttPort               = utilscds->getCampoCredencial(USER, "MQTT_PORT").toInt();
-
-  // === 2. Descriptografia depois, com todos os dados já em memória ===
-  const String decrypted_userFirmware    = utilscds->decrypta(raw_userFirmware, len_userFirmware);
-  const String decrypted_passFirmware    = utilscds->decrypta(raw_passFirmware, len_passFirmware);
-  const String decrypted_apiToken        = utilscds->decrypta(raw_apiToken, len_apiToken);
-  const String decrypted_mqttUser        = utilscds->decrypta(raw_mqttUser, len_mqttUser);
-  const String decrypted_mqttPass        = utilscds->decrypta(raw_mqttPass, len_mqttPass);
-  #ifdef DEBUG
-    Serial.println("userFirmware: "    + decrypted_userFirmware);
-    Serial.println("passFirmware: "    + decrypted_passFirmware);
-    Serial.println("apiToken: "        + decrypted_apiToken);
-    Serial.println("mqttUser: "        + decrypted_mqttUser);
-    Serial.println("mqttPass: "        + decrypted_mqttPass);
-  #endif
+  if (version.isEmpty()) {
+    utilscds->mensagemLog("[AVISO] API_VERSION não carregado, usando fallback '1.0.0'");
+    version = "1.0.0";
+  }
+  
+  if (callerOrigin.isEmpty()) {
+    utilscds->mensagemLog("[AVISO] CALLER_ORIGIN não carregado, usando fallback '*'");
+    callerOrigin = "*";
+  }
   
   // === Servidor principal e OTA (só quando conectado) ===
   websrvhdl = new WebServerHandler(
     decrypted_apiToken.c_str(),
-    apiVersion,
+    version,
     hostName,
-    "Cisterna 1",
+    callerOrigin,
     utilscds
   );
 
-  isWiFiConnected = websrvhdl->connectSTA(hostName);
-  if (!isWiFiConnected) {
+  // === Wi-Fi: tenta STA; se falhar, abre portal ===
+  wifi_connected = websrvhdl->connectSTA(hostName);
+  if (!wifi_connected) {
     String apName = hostName.isEmpty() ? String("device-setup") : (hostName + "-setup");
-    #ifdef DEBUG
-      Serial.printf("Heap livre antes do AP: %d bytes\n", ESP.getFreeHeap());
-    #endif
+    utilscds->mensagemLog("[DEBUG] Heap livre antes do AP: %d bytes", ESP.getFreeHeap());
     websrvhdl->startWebServerWifiManager(apName);
-    #ifdef DEBUG
-      Serial.println("WiFi não configurado!");
-       IPAddress apIP = WiFi.softAPIP();
-      Serial.println("Por favor, conecte-se em: " + apName + " e entre em: http://" + apIP.toString().c_str() + " para configuração do WiFi.");
+    utilscds->mensagemLog("[DEBUG] WiFi não configurado!");
+    utilscds->mensagemLog("[DEBUG] Por favor, conecte-se em: %s", apName.c_str());
+    char urlBuffer[128];
+    snprintf(urlBuffer, sizeof(urlBuffer), "URL esperada: http://%s.local", hostBuffer);
+    utilscds->mensagemLog("[DEBUG] Entre em: http://%s.local para configuração do WiFi.", urlBuffer);
+  } else {
+    utilscds->mensagemLog("[HEAP] Livre: %d bytes", ESP.getFreeHeap());
+    utilscds->mensagemLog("[HEAP] Maior bloco: %d bytes", ESP.getMaxFreeBlockSize());
+
+    // === Carrega credenciais de firmware/host/api/mqtt (Preferences/NVS) ===
+    // Carrega valores brutos
+    int userFirmwareLen               = utilscds->carregaDado("firmware", "userLen", "0").toInt();
+    String userFirmare                = utilscds->carregaDado("firmware", "user", "");
+    if (!userFirmare.isEmpty()) {
+        decrypted_userFirmware = utilscds->decrypta(userFirmare, userFirmwareLen);
+    } else {
+        utilscds->mensagemLog("[ERRO] Falha ao usar credenciais de firmware!");
+        delay(2000);
+    }
+
+    int passFirmwareLen               = utilscds->carregaDado("firmware", "passLen", "0").toInt();
+    String passFirmware                = utilscds->carregaDado("firmware", "pass", "");
+    if (!passFirmware.isEmpty()) {
+        decrypted_passFirmware = utilscds->decrypta(passFirmware, passFirmwareLen);
+    } else {
+        utilscds->mensagemLog("[ERRO] Falha ao usar credenciais de firmware!");
+        delay(2000);
+    }
+
+    int apiTokenLen               = utilscds->carregaDado("api", "tokenLen", "0").toInt();
+    String apiToken               = utilscds->carregaDado("api", "token", "");
+    if (!apiToken.isEmpty()) {
+        decrypted_apiToken = utilscds->decrypta(apiToken, apiTokenLen);
+        websrvhdl->atualizaApiToken(decrypted_apiToken);
+    } else {
+        utilscds->mensagemLog("[ERRO] Falha ao usar credenciais de firmware!");
+        delay(2000);
+    }
+
+    // === MQTT: credenciais salvas pelo portal Wi-Fi (namespace "mqtt") ===
+    String mqttBroker = utilscds->carregaDado("mqtt", "broker", "io.adafruit.com");
+    uint16_t mqttPort  = (uint16_t)utilscds->carregaDado("mqtt", "port", "1883").toInt();
+
+    int mqttUsernameLen  = utilscds->carregaDado("mqtt", "usernameLen", "0").toInt();
+    String mqttUsername  = utilscds->carregaDado("mqtt", "username", "");
+    if (!mqttUsername.isEmpty()) {
+        decrypted_userMqtt = utilscds->decrypta(mqttUsername, mqttUsernameLen);
+    }
+
+    int mqttPasswordLen  = utilscds->carregaDado("mqtt", "passwordLen", "0").toInt();
+    String mqttPassword  = utilscds->carregaDado("mqtt", "password", "");
+    if (!mqttPassword.isEmpty()) {
+        decrypted_passMqtt = utilscds->decrypta(mqttPassword, mqttPasswordLen);
+    }
+
+    #ifdef USE_MQTT
+      if (!decrypted_userMqtt.isEmpty() && !decrypted_passMqtt.isEmpty()) {
+        utilscds->iniciaMqtt(&wifiClient, mqttBroker, mqttPort, decrypted_userMqtt, decrypted_passMqtt);
+        utilscds->mensagemLog("[DEBUG] MQTT inicializado (broker=%s:%u)", mqttBroker.c_str(), mqttPort);
+      } else {
+        utilscds->mensagemLog("[AVISO] Credenciais MQTT nao configuradas; MQTT desabilitado.");
+      }
     #endif
-  } else {   
-    const char * hostname = hostName.c_str();
-    MDNS.end();
+
+    if (!userFirmare.isEmpty() && !passFirmware.isEmpty() && !apiToken.isEmpty()) {
+      utilscds->mensagemLog("[DEBUG] Credenciais carregadas com sucesso!");
+      utilscds->mensagemLog("[DEBUG] Credenciais brutas carregadas:");
+      utilscds->mensagemLog("[DEBUG] USER_FIRMWARE (hex): %s (len param: %d)", decrypted_userFirmware.c_str(), userFirmwareLen);
+      utilscds->mensagemLog("[DEBUG] PASS_FIRMWARE (hex): %s (len param: %d)", decrypted_passFirmware.c_str(), passFirmwareLen);
+      utilscds->mensagemLog("[DEBUG] API_TOKEN (hex): %s (len param: %d)", decrypted_apiToken.c_str(), apiTokenLen);
+    } else {
+      utilscds->mensagemLog("[ERRO] Falha ao carregar credenciais!");
+      delay(2000);
+    }
+    // Descriptografa com comprimentos validados   
+    // ✅ Validação de credenciais descriptografadas
+    if (decrypted_userFirmware.isEmpty() || decrypted_passFirmware.isEmpty() || decrypted_apiToken.isEmpty()) {
+      utilscds->mensagemLog("[ERRO] Falha ao descriptografar credenciais de firmware e de api!");
+      utilscds->mensagemLog("Causa possível:");
+      utilscds->mensagemLog("  1. Chave AES (AES_KEY_HEX) está incorreta");
+      utilscds->mensagemLog("  2. Valores hexadecimais são inválidos");
+      delay(2000);
+    }
+      
+    utilscds->mensagemLog("[DEBUG] [✓ Credenciais Carregadas]");
+    utilscds->mensagemLog("[DEBUG] Credenciais:");
+    utilscds->mensagemLog("[DEBUG] USER_FIRMWARE (decrypted): %s", decrypted_userFirmware.c_str());
+    utilscds->mensagemLog("[DEBUG] PASS_FIRMWARE (decrypted): %s", decrypted_passFirmware.c_str());
+    delay(50);
+    websrvhdl->startWebServer();   // registra rotas no 'server' e chama server->begin() lá dentro
+    utilscds->mensagemLog("[DEBUG] Web Server inicializado");
+    utilscds->mensagemLog("[DEBUG] Heap após startWebServer: %d", ESP.getFreeHeap());
+    utilscds->mensagemLog("[DEBUG] Heap maior bloco: %d", ESP.getMaxFreeBlockSize());
+
+    ElegantOTA.begin(websrvhdl->getWebServer(), decrypted_userFirmware.c_str(), decrypted_passFirmware.c_str());
+    utilscds->mensagemLog("[DEBUG] OTA inicializado");
+    utilscds->mensagemLog("[DEBUG] Heap após OTA: %d", ESP.getFreeHeap());
+    utilscds->mensagemLog("[DEBUG] Heap maior bloco: %d", ESP.getMaxFreeBlockSize());
 
     // Atribuindo clock para conseguir usar datetime nos arquivos de log
     utilscds->atribuiRelogio();
-
-    utilscds->iniciaStorage();
-    utilscds->exibeMensagem("Inicializando o storage");
-
-    websrvhdl->startWebServer();   // registra rotas no 'server' e chama server->begin() lá dentro
-
-    #ifdef DEBUG
-      Serial.println("Web Server inicializado");
-      Serial.printf("Heap após startWebServer: %d\n", ESP.getFreeHeap());
-      Serial.printf("Heap maior bloco: %d\n", ESP.getMaxFreeBlockSize());
-    #endif
     
-    ElegantOTA.begin(websrvhdl->getWebServer(), decrypted_userFirmware.c_str(), decrypted_passFirmware.c_str());
-    #ifdef DEBUG
-      Serial.println("OTA inicializado");
-      Serial.printf("Heap após OTA: %d\n", ESP.getFreeHeap());
-      Serial.printf("Heap maior bloco: %d\n", ESP.getMaxFreeBlockSize());
-      Serial.println("host: http://"+hostName+".local");
-    #endif
+    const char * hostname = hostName.c_str();
+    MDNS.end();
 
     if(!MDNS.begin(hostname)){
-      #ifdef DEBUG
-        Serial.println("mDNS falhou");
-      #endif
+      utilscds->mensagemLog("[DEBUG] mDNS falhou"); 
       delay(1000);
       delete websrvhdl;
       ESP.restart();
     }
-    MDNS.addService("http", "tcp", 80);
-    #ifdef DEBUG
-      Serial.print(F("mDNS ok: http://"));
-      Serial.print(hostname);     // hostname = const char* ou String
-      Serial.println(F(".local"));
-    #endif
-  }
+  }    
 }
 
 //  LOOP
 void loop() {
-  if (isWiFiConnected) {
+  if (wifi_connected) {
     MDNS.update();
-    ElegantOTA.loop();
+    //ElegantOTA.loop();
     websrvhdl->loop();
     #ifdef USE_MQTT
       utilscds->atualizaMqtt();

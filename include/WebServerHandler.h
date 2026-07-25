@@ -35,7 +35,7 @@
 #include "Config.h"
 
 #define MAX_PAYLOAD_SIZE           2000
-
+#define HTTP_REST_PORT             80
 #define RelayWater                 D8
 #define RelayLight                 D7
 #define RelayLevel                 D6
@@ -112,6 +112,7 @@ public:
     void nivelAlto();
     void ligarBomba();
     void desligarBomba();
+    void atualizaApiToken(const String& token);
     AsyncWebServer * getWebServer();
 };
 

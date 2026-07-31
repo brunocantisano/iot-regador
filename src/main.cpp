@@ -8,12 +8,12 @@
 // ====== Objetos do seu projeto ======
 ArduinoUtilsCds * utilscds = nullptr;
 WiFiClient wifiClient;
-WebServerHandler * websrvhdl = nullptr;
 String decrypted_userFirmware;
 String decrypted_passFirmware;
 String decrypted_userMqtt;
 String decrypted_passMqtt;
 String decrypted_apiToken;
+WebServerHandler * websrvhdl = nullptr;
 bool wifi_connected = false;
 
 //---------------------------------//
@@ -198,10 +198,10 @@ void setup() {
 
 //  LOOP
 void loop() {
+  if (websrvhdl) websrvhdl->loop();
   if (wifi_connected) {
     MDNS.update();
     //ElegantOTA.loop();
-    websrvhdl->loop();
     #ifdef USE_MQTT
       utilscds->atualizaMqtt();
     #endif

@@ -18,18 +18,17 @@ WebServerHandler::WebServerHandler(
     const String& hostServer, 
     const String& caller,
     ArduinoUtilsCds * cds): 
+                      utilscds(cds),
                       apiToken(token),
                       apiVersion(version),
                       host(hostServer),
-                      callerOrigin(caller),
-                      utilscds(cds)
+                      callerOrigin(caller)
 {
   server = new AsyncWebServer(HTTP_REST_PORT);
   ws = new AsyncWebSocket("/ws");
-  utilshdl = utilscds->obtemUtilitarios();
   strhdl   = utilscds->obtemStorage();
+  utilshdl = utilscds->obtemUtilitarios();
   prefshdl = utilscds->obtemPreferences();
-  utilscds->criaNovoArquivoLog();
 }
 
 WebServerHandler::~WebServerHandler() {
@@ -129,50 +128,26 @@ void WebServerHandler::handleFileServing(void){
 
 void WebServerHandler::handleHome(){
   server->on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {    
-    String html = "";
-    if(!strhdl->readFile("/home.html", html)) {
+    String html = utilscds->lerArquivo("/home.html");
+    if(html.isEmpty()) {
       html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
     } else {
-      // Dados fixos ou variáveis de cada caixa
-      const char* img       = "get-file?name=fortlev.png";
-      String nomes[1]       = {"Cisterna"};
-      const char* ids[1]    = {"cx"};
-      
-      ArduinoSensorPort * s25 = searchListSensor(PIN_LV25);
-      ArduinoSensorPort * s50 = searchListSensor(PIN_LV50);
-      ArduinoSensorPort * s75 = searchListSensor(PIN_LV75);
-      ArduinoSensorPort * s100= searchListSensor(PIN_LV100);
+      html.replace("{{API_VERSION}}", apiVersion);
+      html.replace("{{HOST_WATER_LEVEL}}", host + ".local");
+      // Slug do dashboard no Adafruit IO (io.adafruit.com/<user>/dashboards/<slug>) -
+      // nao tem relacao com o hostname mDNS do dispositivo.
+      html.replace("{{AIO_DASHBOARD}}", "minion");
 
-      // lê do hardware (evita usar cache antigo)
-      bool estadosCx[4] = {
-        readLevelStable(PIN_LV25),
-        readLevelStable(PIN_LV50),
-        readLevelStable(PIN_LV75),
-        readLevelStable(PIN_LV100)
-      };
-      bool* estados[]   = { estadosCx };
-      const int total   = 1;
-
-      String json = "[";
-      for (int i = 0; i < total; i++) {
-        json += "{";
-        json += "\"id\":\""   + String(ids[i])   + "\",";
-        json += "\"name\":\"" + String(nomes[i]) + "\",";
-        json += "\"img\":\""  + String(img)      + "\",";
-        json += "\"state\":{";
-        json += "\"s25\":"  + String(estados[i][0] ? "true" : "false") + ",";
-        json += "\"s50\":"  + String(estados[i][1] ? "true" : "false") + ",";
-        json += "\"s75\":"  + String(estados[i][2] ? "true" : "false") + ",";
-        json += "\"s100\":" + String(estados[i][3] ? "true" : "false");
-        json += "}";
-        json += "}";
-        if (i < total - 1) json += ",";
-      }
-      json += "]";
-
-      html.replace("ARRAY_WATER_LEVEL", json);
-      html.replace("0.0.0", apiVersion);
-      html.replace("HOST_WATER_LEVEL", host + ".local");
+      String mqttStatus = "";
+      #ifdef USE_MQTT
+        String mqttUser = utilscds->obtemMqttUser();
+        html.replace("{{AIO_USERNAME}}", mqttUser);
+        if (utilscds->obtemMqttCredenciaisInvalidas()) {
+          mqttStatus = "<strong style=\"color:#b00020\">Configuração MQTT inválida: usuário ou senha incorretos. "
+                       "Corrija em <a href=\"/wifimanager.html\">/wifimanager.html</a>.</strong>";
+        }
+      #endif
+      html.replace("{{MQTT_STATUS}}", mqttStatus);
     }
     request->send(HTTP_OK, utilshdl->getMimeType(".html"), html);
   });
@@ -180,26 +155,26 @@ void WebServerHandler::handleHome(){
 
 void WebServerHandler::handleSwagger(){
   server->on("/swagger.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String html = "";
-    if(!strhdl->readFile("/swagger.json", html)) {  
-      html=String(MSG_ARQUIVO_NAO_ENCONTRADO);  
+    String html = utilscds->lerArquivo("/swagger.json");
+    if(html.isEmpty()) {
+      html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
     } else {
-      html.replace("0.0.0",apiVersion);
-      html.replace("HOST_WATER_LEVEL",host+".local");         
+      html.replace("{{API_VERSION}}",apiVersion);
+      html.replace("{{HOST_WATER_LEVEL}}",host+".local");
     }
-    request->send(HTTP_OK, utilshdl->getMimeType(".json"), html);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), html);
   });
 }
 
 void WebServerHandler::handleSwaggerUI(){
   server->on("/swaggerUI", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String html = "";
-    if(!strhdl->readFile("/swaggerUI.html", html)) {
+    String html = utilscds->lerArquivo("/swaggerUI.html");
+    if(html.isEmpty()) {
       html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
     } else {
-      html.replace("HOST_WATER_LEVEL",host+".local");  
+      html.replace("{{HOST_WATER_LEVEL}}",host+".local");  
     }
-    request->send(HTTP_OK, utilshdl->getMimeType(".html"), html);
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".html"), html);
   });  
 }
 
@@ -219,37 +194,57 @@ void WebServerHandler::handleMetrics(){
 void WebServerHandler::handlePorts(){
   server->on("/ports", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if(check_authorization_header(request)) {
-      String JSONmessage;
-      ArduinoSensorPort *arduinoSensorPort;    
-      for(int i = 0; i < sensorListaEncadeada.size(); i++){
+      const int total = sensorListaEncadeada.size();
+      String JSONmessage = "[";
+      for(int i = 0; i < total; i++){
         // Obtem a aplicação da lista
-        arduinoSensorPort = sensorListaEncadeada.get(i);
-        JSONmessage += "{\"id\": \""+String(arduinoSensorPort->id)+"\",\"gpio\": \""+String(arduinoSensorPort->gpio)+"\",\"name\": \""+String(arduinoSensorPort->name)+"\"},";
+        ArduinoSensorPort *arduinoSensorPort = sensorListaEncadeada.get(i);
+        if (!arduinoSensorPort) continue; // defensivo: nao deveria acontecer dentro de [0,size())
+        if (JSONmessage.length() > 1) JSONmessage += ",";
+        JSONmessage += "{\"id\": \""+String(arduinoSensorPort->id)+"\",\"gpio\": \""+String(arduinoSensorPort->gpio)+"\",\"name\": \""+String(arduinoSensorPort->name)+"\"}";
       }
-      request->send(HTTP_OK, utilshdl->getMimeType(".json"), '['+JSONmessage.substring(0, JSONmessage.length()-1)+']');
+      JSONmessage += "]";
+      request->send(HTTP_OK, utilshdl->getMimeType(".json"), JSONmessage);
     } else {
-      request->send(HTTP_UNAUTHORIZED, utilshdl->getMimeType(".txt"), WRONG_AUTHORIZATION);
+      // WRONG_AUTHORIZATION e PROGMEM (WebMessages.h) - send() normal faz
+      // String::operator=(const char*), que chama strlen() comum (nao
+      // safe pra flash) antes de copiar; send_P() evita isso (mesma causa
+      // do crash que já corrigimos no HTML_FALLBACK do portal AP).
+      request->send_P(HTTP_UNAUTHORIZED, utilshdl->getMimeType(".txt"), WRONG_AUTHORIZATION);
     }
-  });  
+  });
 }
 
 void WebServerHandler::handleSensors() {
   server->on("/sensors", HTTP_GET, [this](AsyncWebServerRequest *request) {
     if (!check_authorization_header(request)) {
-      request->send(HTTP_UNAUTHORIZED, utilshdl->getMimeType(".txt"), WRONG_AUTHORIZATION);
+      request->send_P(HTTP_UNAUTHORIZED, utilshdl->getMimeType(".txt"), WRONG_AUTHORIZATION);
       return;
     }
 
     const AsyncWebParameter* pLevel = request->getParam("level");
     if (!pLevel) { request->send(HTTP_BAD_REQUEST, utilshdl->getMimeType(".txt"), "missing level"); return; }
 
-    int level = pLevel->value().toInt();  // 1..4 (25/50/75/100)
-    int pin = (level==1)?PIN_LV25 : (level==2)?PIN_LV50 : (level==3)?PIN_LV75 : (level==4)?PIN_LV100 : -1;
+    // Valida que "level" e um inteiro 1..4 antes de derivar o pino - sem isso
+    // um valor invalido (ausente, texto, fora do range) cai no pin=-1 sem
+    // avisar o cliente, respondendo "desativado" para um pino que nao existe.
+    String levelStr = pLevel->value();
+    bool numeric = levelStr.length() > 0;
+    for (size_t i = 0; i < levelStr.length() && numeric; i++) {
+      if (!isDigit(levelStr.charAt(i))) numeric = false;
+    }
+    int level = numeric ? levelStr.toInt() : -1;
+    if (level < 1 || level > 4) {
+      request->send(HTTP_BAD_REQUEST, utilscds->obtemTipoMime(".txt"), "level invalido (use 1..4)");
+      return;
+    }
+
+    int pin = (level==1)?PIN_LV25 : (level==2)?PIN_LV50 : (level==3)?PIN_LV75 : PIN_LV100;
     bool on = readLevelStable(pin);
     if (auto s = searchListSensor(pin)) s->status = on;
     String resp = on ? "ativado" : "desativado";
-    request->send(HTTP_OK, utilshdl->getMimeType(".txt"), resp);
-  });  
+    request->send(HTTP_OK, utilscds->obtemTipoMime(".txt"), resp);
+  });
 }
 
 void WebServerHandler::handleUpdateSensors() {
@@ -323,9 +318,9 @@ void WebServerHandler::handleEventos(){
         mqttUser   = utilscds->obtemMqttUser();
         mqttPass   = utilscds->obtemMqttPass();
       #endif
-      html.replace("AIO_SERVER", mqttBroker);
-      html.replace("AIO_USERNAME", mqttUser);
-      html.replace("AIO_KEY", mqttPass);
+      html.replace("{{AIO_SERVER}}", mqttBroker);
+      html.replace("{{AIO_USERNAME}}", mqttUser);
+      html.replace("{{AIO_KEY}}", mqttPass);
     }
     request->send(HTTP_OK, utilshdl->getMimeType(filename), html);
   });
@@ -437,44 +432,32 @@ void WebServerHandler::onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient *
   (void)server;  // evita -Wunused-parameter
   (void)arg;
 
-  auto pushState = [this](){
-    bool b25  = readLevelStable(PIN_LV25);
-    bool b50  = readLevelStable(PIN_LV50);
-    bool b75  = readLevelStable(PIN_LV75);
-    bool b100 = readLevelStable(PIN_LV100);
-  
-    if (auto s = searchListSensor(PIN_LV25))  s->status  = b25;
-    if (auto s = searchListSensor(PIN_LV50))  s->status  = b50;
-    if (auto s = searchListSensor(PIN_LV75))  s->status  = b75;
-    if (auto s = searchListSensor(PIN_LV100)) s->status  = b100;
-  
-    notifySensors("cx", b25, b50, b75, b100);
-  };
-
   if (type == WS_EVT_CONNECT){
-    pushState();                 // envia estado inicial ao conectar
-  } else if (type == WS_EVT_DATA){
-    Serial.println("WS_EVT_DATA -> atualizando estado");
-    pushState();                 // reenvia quando chegar 'ping' do front
-  }
-}
+    Serial.printf("[WS] EVT_CONNECT client=%u heap_livre=%u maior_bloco=%u\n",
+                  client ? client->id() : 0, ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
 
-void WebServerHandler::notifySensors(const String& id, bool s25, bool s50, bool s75, bool s100){
-  String json;
-  json.reserve(180);
-  json = "{\"id\":\"" + id + "\",\"state\":{";
-  json += "\"s25\":" + String(s25 ? "true" : "false") + ",";
-  json += "\"s50\":" + String(s50 ? "true" : "false") + ",";
-  json += "\"s75\":" + String(s75 ? "true" : "false") + ",";
-  json += "\"s100\":" + String(s100 ? "true" : "false");
-  json += "}}";
-  ws->textAll(json);
+  } else if (type == WS_EVT_DATA){
+    Serial.printf("[WS] EVT_DATA client=%u heap_livre=%u maior_bloco=%u\n",
+                  client ? client->id() : 0, ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
+
+  } else if (type == WS_EVT_DISCONNECT){
+    Serial.printf("[WS] EVT_DISCONNECT client=%u heap_livre=%u maior_bloco=%u\n",
+                  client ? client->id() : 0, ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
+  } else if (type == WS_EVT_ERROR){
+    Serial.printf("[WS] EVT_ERROR client=%u heap_livre=%u\n",
+                  client ? client->id() : 0, ESP.getFreeHeap());
+  }
 }
 
 void WebServerHandler::loop() {
   if (ws) {
     ws->cleanupClients();
   }
+  if (_apMode) dns.processNextRequest();  // mesmo método, compatível
+  if (_pendingRestartAfterSave && (long)(millis() - _pendingRestartDeadline) >= 0) {
+    _pendingRestartAfterSave = false;
+    ESP.restart();
+  }  
 }
 
 void WebServerHandler::startWebServer() {
@@ -559,7 +542,7 @@ bool WebServerHandler::loadSensorList(){
 ArduinoSensorPort * WebServerHandler::searchListSensor(int gpio) {
   for(int i = 0; i < sensorListaEncadeada.size(); i++){
     ArduinoSensorPort *p = sensorListaEncadeada.get(i);
-    if (gpio == p->gpio) return p;
+    if (p && gpio == p->gpio) return p;
   }
   return nullptr;
 }
@@ -670,6 +653,11 @@ void WebServerHandler::desligarBomba(){
   digitalWrite(RelayLight, LOW);
 }
 
+/************ utilitário ************/
+void WebServerHandler::sendPortalFallback(AsyncWebServerRequest* request) {
+  request->send_P(HTTP_OK, "text/html", HTML_FALLBACK);
+}
+
 /**********************************************
  *  Rotas do portal (AP)
  **********************************************/
@@ -684,7 +672,7 @@ void WebServerHandler::registerPortalRoutes() {
   server->on("/", HTTP_GET, [this](AsyncWebServerRequest* request){
     Serial.println("[HTTP] GET /");
     String html = utilscds->lerArquivo("/wifimanager.html");
-    if(html.length()==0) {
+    if (html.isEmpty()) {
       Serial.println("readFile->registerPortalRoutes");
       request->send(HTTP_OK, utilshdl->getMimeType(".html"), MSG_ARQUIVO_NAO_ENCONTRADO);
     }
@@ -771,15 +759,34 @@ void WebServerHandler::registerPortalRoutes() {
       "</div></body></html>"
     );
     html.replace("HOST", mdnsHost);
+    // request->send() e assincrono - so enfileira o envio, nao garante que os
+    // bytes ja chegaram no navegador. Em vez de um delay() as cegas (que
+    // tanto pode reiniciar cedo demais - pagina em branco - quanto demorar
+    // mais que o necessario), reinicia so quando o cliente desconectar (a
+    // resposta ja sai com "Connection: close", entao isso dispara assim que
+    // o navegador terminar de receber a pagina). O prazo abaixo e so uma
+    // rede de seguranca caso o onDisconnect nunca chegue a disparar.
+    this->_pendingRestartAfterSave = true;
+    this->_pendingRestartDeadline = millis() + 5000;
+    request->onDisconnect([this]() {
+      if (this->_pendingRestartAfterSave) {
+        this->_pendingRestartAfterSave = false;
+        ESP.restart();
+      }
+    });
     request->send(HTTP_OK, utilshdl->getMimeType(".html"), html);
-    delay(300);
-    ESP.restart();
   });
 
   // Arquivos estáticos opcionais (CSS/JS/imagens) em /
   server->serveStatic("/", LittleFS, "/")
       .setDefaultFile("home.html")            // serve /home.html em "/"
       .setCacheControl("max-age=31536000");   // opcional: cache
+
+  // Última defesa: qualquer rota desconhecida → fallback do portal
+  server->onNotFound([this](AsyncWebServerRequest* request){
+    Serial.printf("[404] %s\n", request->url().c_str());
+    sendPortalFallback(request);
+  });
 }
 
 /**********************************************
@@ -803,6 +810,33 @@ void WebServerHandler::startWebServerWifiManager(const String& apName) {
 /**********************************************
  *  Conexão STA (Wi-Fi do roteador)
  **********************************************/
+// Traduz wl_status_t em texto legível para diagnosticar falha de conexão
+// (senha errada, SSID fora de alcance, etc.) — ver wl_definitions.h.
+static const char* wifiStatusToString(wl_status_t status) {
+  switch (status) {
+    case WL_IDLE_STATUS:     return "IDLE_STATUS (ainda tentando/sem resultado)";
+    case WL_NO_SSID_AVAIL:   return "NO_SSID_AVAIL (SSID nao encontrado no ar - fora de alcance, oculto ou banda errada)";
+    case WL_SCAN_COMPLETED:  return "SCAN_COMPLETED";
+    case WL_CONNECTED:       return "CONNECTED";
+    case WL_CONNECT_FAILED:  return "CONNECT_FAILED (provavel senha incorreta ou modo de seguranca incompativel)";
+    case WL_CONNECTION_LOST: return "CONNECTION_LOST";
+    case WL_WRONG_PASSWORD:  return "WRONG_PASSWORD (senha incorreta)";
+    case WL_DISCONNECTED:    return "DISCONNECTED";
+    default:                 return "desconhecido";
+  }
+}
+
+static const char* wifiEncTypeToString(uint8_t encType) {
+  switch (encType) {
+    case ENC_TYPE_WEP:  return "WEP";
+    case ENC_TYPE_TKIP: return "WPA/TKIP";
+    case ENC_TYPE_CCMP: return "WPA2/CCMP";
+    case ENC_TYPE_NONE: return "aberta (sem senha)";
+    case ENC_TYPE_AUTO: return "WPA/WPA2 misto";
+    default:             return "desconhecido";
+  }
+}
+
 bool WebServerHandler::connectSTA(const String& hostForMDNS) {
   (void)hostForMDNS;
 
@@ -814,8 +848,25 @@ bool WebServerHandler::connectSTA(const String& hostForMDNS) {
     return false;
   }
 
-  Serial.printf("Tentando STA: ssid='%s'\n", savedSsid.c_str());
+  Serial.printf("Tentando STA: ssid='%s' (senha com %d caracteres)\n", savedSsid.c_str(), savedPass.length());
+
+  // Diagnóstico: procura a rede salva no ar antes de tentar conectar, para
+  // distinguir "SSID nao existe/fora de alcance/so 5GHz" de "senha errada".
   WiFi.mode(WIFI_STA);
+  int redesEncontradas = WiFi.scanNetworks();
+  bool redeEncontrada = false;
+  for (int i = 0; i < redesEncontradas; i++) {
+    if (WiFi.SSID(i) == savedSsid) {
+      redeEncontrada = true;
+      Serial.printf("  Rede encontrada no scan: RSSI=%ddBm canal=%d seguranca=%s\n",
+                     WiFi.RSSI(i), WiFi.channel(i), wifiEncTypeToString(WiFi.encryptionType(i)));
+    }
+  }
+  if (!redeEncontrada) {
+    Serial.println(F("  AVISO: SSID salvo NAO apareceu no scan (fora de alcance, oculto, ou so 5GHz - ESP8266 nao suporta 5GHz)."));
+  }
+  WiFi.scanDelete();
+
   WiFi.persistent(false);
   WiFi.begin(savedSsid.c_str(), savedPass.c_str());
 
@@ -826,7 +877,7 @@ bool WebServerHandler::connectSTA(const String& hostForMDNS) {
   Serial.println();
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(F("Falha na conexão STA."));
+    Serial.printf("Falha na conexao STA. status=%d (%s)\n", WiFi.status(), wifiStatusToString(WiFi.status()));
     return false;
   }
 

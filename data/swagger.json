@@ -2,7 +2,7 @@
   "swagger": "2.0",
   "info": {
     "description": "Regador ESP8266 using REST api server",
-    "version": "0.0.0",
+    "version": "{{API_VERSION}}",
     "title": "Swagger Regador",
     "termsOfService": "http://swagger.io/terms/",
     "contact": {
@@ -13,7 +13,7 @@
       "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
     }
   },
-  "host": "HOST_WATER",
+  "host": "{{HOST_WATER_LEVEL}}",
   "basePath": "/",
   "tags": [
     {

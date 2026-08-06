@@ -155,14 +155,22 @@ void WebServerHandler::handleHome(){
 
 void WebServerHandler::handleSwagger(){
   server->on("/swagger.json", HTTP_GET, [this](AsyncWebServerRequest *request) {
-    String html = utilscds->lerArquivo("/swagger.json");
-    if(html.isEmpty()) {
-      html=String(MSG_ARQUIVO_NAO_ENCONTRADO);
-    } else {
-      html.replace("{{API_VERSION}}",apiVersion);
-      html.replace("{{HOST_WATER_LEVEL}}",host+".local");
+    if (!LittleFS.exists("/swagger.json")) {
+      request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), MSG_ARQUIVO_NAO_ENCONTRADO);
+      return;
     }
-    request->send(HTTP_OK, utilscds->obtemTipoMime(".json"), html);
+    // Streaming direto do LittleFS (sem carregar o arquivo inteiro num String)
+    // - o swagger.json nao tem nenhum '%' fora dos placeholders, entao o
+    // template engine do ESPAsyncWebServer e seguro aqui (ver home.html
+    // pra saber por que isso NAO seria seguro num arquivo com '%' legitimo).
+    String apiVersionCopy = apiVersion;
+    String hostname = host + ".local";
+    request->send(LittleFS, "/swagger.json", "application/json", false,
+      [apiVersionCopy, hostname](const String& var) -> String {
+        if (var == "API_VERSION") return apiVersionCopy;
+        if (var == "HOST_WATER_LEVEL") return hostname;
+        return String();
+      });
   });
 }
 
@@ -239,7 +247,7 @@ void WebServerHandler::handleSensors() {
       return;
     }
 
-    int pin = (level==1)?PIN_LV25 : (level==2)?PIN_LV50 : (level==3)?PIN_LV75 : PIN_LV100;
+    int pin = 25;
     bool on = readLevelStable(pin);
     if (auto s = searchListSensor(pin)) s->status = on;
     String resp = on ? "ativado" : "desativado";
